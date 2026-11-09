@@ -1,0 +1,14 @@
+{
+  "name": "figma2ui-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that turns Figma designs into UI code for your stack with minimal agent tokens",
+  "type": "module",
+  "bin": { "figma2ui-mcp": "src/server.js" },
+  "files": ["src", "skill", "README.md"],
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test test/*.test.js" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  }
+}

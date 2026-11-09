@@ -1,0 +1,4 @@
+node_modules/
+.DS_Store
+.figma2ui.json
+.env
