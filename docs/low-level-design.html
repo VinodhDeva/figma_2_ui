@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>figma2ui: low-level design</title>
+<style>
+  :root {
+    --bg: #f5f2fb; --card: #ffffff; --ink: #1a1626; --muted: #5f5a70; --line: #dcd5ec;
+    --accent: #6d28d9; --small: #b0127a; --soft: #ede4ff; --zone: #fbeef6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121019; --card: #1c1927; --ink: #edeaf5; --muted: #a8a2ba; --line: #373248;
+      --accent: #b794ff; --small: #f472b6; --soft: #2c2148; --zone: #2a1524;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 0 16px 64px; }
+  header { padding: 48px 0 4px; }
+  .tag { color: var(--accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: clamp(28px, 4.5vw, 44px); line-height: 1.1; margin: 10px 0 12px; letter-spacing: -.02em; }
+  h2 { font-size: 24px; margin: 52px 0 6px; letter-spacing: -.01em; }
+  h2 small { color: var(--accent); font-size: 14px; margin-right: 8px; }
+  h3 { font-size: 17px; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  a { color: var(--accent); }
+  .lead { font-size: 18px; color: var(--muted); max-width: 760px; }
+  .sub { color: var(--muted); max-width: 780px; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  nav a { font-size: 14px; text-decoration: none; border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; color: var(--ink); }
+  nav a:hover { border-color: var(--accent); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-top: 16px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .grid .card { margin-top: 0; }
+  .card p, .card li { font-size: 14.5px; color: var(--muted); }
+  .card ul, .card ol { margin: 0; padding-left: 18px; }
+  code, pre { font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 8px 0 0; overflow-x: auto; color: var(--ink); }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; }
+  td { color: var(--ink); }
+
+  /* Module layers */
+  .layer { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: stretch; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+  .layer:last-child { border-bottom: 0; }
+  .layer > b { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); align-self: center; }
+  .mods { display: flex; flex-wrap: wrap; gap: 10px; }
+  .mod { flex: 1 1 170px; border: 2px solid var(--line); border-radius: 10px; padding: 9px 11px; background: var(--card); }
+  .mod b { display: block; font: 700 13.5px ui-monospace, Menlo, Consolas, monospace; color: var(--accent); }
+  .mod span { font-size: 13px; color: var(--muted); }
+  .mod.ext { border-style: dashed; background: var(--zone); }
+  .mod.ext b { color: var(--small); }
+  @media (max-width: 560px) { .layer { grid-template-columns: 1fr; } }
+
+  /* Pipeline strip */
+  .pipe { display: flex; flex-wrap: wrap; gap: 8px; counter-reset: st; }
+  .stage { flex: 1 1 120px; border: 2px solid var(--line); border-radius: 10px; padding: 9px 10px; animation: lit 8s infinite; counter-increment: st; }
+  .stage b { display: block; font-size: 14px; }
+  .stage b::before { content: counter(st) ". "; color: var(--accent); }
+  .stage span { font-size: 12.5px; color: var(--muted); }
+  @keyframes lit { 0%, 11% { border-color: var(--accent); background: var(--soft); } 13%, 100% { border-color: var(--line); background: transparent; } }
+
+  /* Sequence diagram */
+  svg { display: block; width: 100%; min-width: 780px; height: auto; }
+  .head rect { fill: var(--soft); stroke: var(--accent); stroke-width: 1.5; }
+  .head.ext rect { fill: var(--zone); stroke: var(--small); stroke-dasharray: 4 4; }
+  .head text { fill: var(--ink); text-anchor: middle; font-size: 13px; font-weight: 700; }
+  .life { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 5; }
+  .msg { opacity: 0; transition: opacity .35s; }
+  .msg.show { opacity: .5; }
+  .msg.cur { opacity: 1; }
+  .msg path, .msg line { stroke: var(--muted); stroke-width: 2; fill: none; }
+  .msg polygon { fill: var(--muted); }
+  .msg.ret line { stroke-dasharray: 6 5; }
+  .msg.cur path, .msg.cur line { stroke: var(--accent); stroke-width: 3; }
+  .msg.cur polygon { fill: var(--accent); }
+  .msg text { fill: var(--ink); font: 12px ui-monospace, Menlo, Consolas, monospace; paint-order: stroke; stroke: var(--card); stroke-width: 5px; }
+  .tabs, .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .tabs { margin-bottom: 10px; }
+  button { font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 7px 13px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 3px solid var(--small); outline-offset: 2px; }
+  .tabs button { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--card); }
+  .caption { display: grid; gap: 3px; padding: 12px 4px 8px; min-height: 104px; }
+  .caption .n { font-size: 12.5px; font-weight: 700; color: var(--accent); }
+  .caption h3 { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; margin: 0; }
+  .caption p { margin: 0; color: var(--muted); font-size: 14.5px; max-width: 820px; }
+  @media (prefers-reduced-motion: reduce) { .stage { animation: none; } .msg { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="tag">figma2ui · low-level design</div>
+    <h1>How figma2ui works inside</h1>
+    <p class="lead">Module boundaries, call sequences, data shapes, algorithms, and safeguards of the figma2ui MCP server. For the non-technical overview, see the <a href="system-design.html">system design</a>.</p>
+    <nav aria-label="Sections">
+      <a href="#modules">1 Modules</a><a href="#sequence">2 Call sequences</a><a href="#contracts">3 Tool contracts</a><a href="#pipeline">4 Pipeline</a><a href="#data">5 Data model</a><a href="#algorithms">6 Algorithms</a><a href="#emit">7 Stack and output</a><a href="#api">8 Figma API</a><a href="#state">9 State and cache</a><a href="#safety">10 Safeguards</a><a href="#errors">11 Errors</a><a href="#tests">12 Tests</a>
+    </nav>
+  </header>
+
+  <section id="modules">
+    <h2><small>1</small>Modules and layers</h2>
+    <p class="sub">Node 20+, plain ESM JavaScript, no build step. Runtime dependencies: <code>@modelcontextprotocol/sdk</code> and <code>zod</code>. Each layer calls only the layers below it.</p>
+    <div class="card">
+      <div class="layer"><b>Client</b><div class="mods"><div class="mod ext"><b>AI assistant</b><span>Kiro, Claude Code, Cursor, others. Starts the server as a child process and talks JSON-RPC over stdio.</span></div></div></div>
+      <div class="layer"><b>Transport</b><div class="mods"><div class="mod"><b>src/server.js</b><span>Registers 3 tools with zod schemas. Wraps each handler: result becomes one JSON text block, a thrown error becomes <code>isError</code>.</span></div></div></div>
+      <div class="layer"><b>Orchestration</b><div class="mods"><div class="mod"><b>src/tools.js</b><span><code>figmaIndex</code>, <code>figmaChunk</code>, <code>figmaAssets</code>. Owns the order of steps and the shape of every tool result.</span></div></div></div>
+      <div class="layer"><b>Domain</b><div class="mods">
+        <div class="mod"><b>src/figma.js</b><span>URL parsing, REST client, retry, disk cache.</span></div>
+        <div class="mod"><b>src/chunk.js</b><span><code>analyze(design)</code>: dedupe, chunk split, summaries.</span></div>
+        <div class="mod"><b>src/stack.js</b><span><code>detectStack</code>, <code>parseStack</code>, output folders.</span></div>
+        <div class="mod"><b>src/emit.js</b><span>Element tree to React, Vue, Svelte, Angular, HTML, or spec.</span></div>
+        <div class="mod"><b>src/project.js</b><span>State file and guarded writes.</span></div>
+      </div></div>
+      <div class="layer"><b>Core</b><div class="mods">
+        <div class="mod"><b>src/tree.js</b><span><code>buildTree</code>: Figma node to neutral element, tokens, assets. Used by chunk.js.</span></div>
+        <div class="mod"><b>src/names.js</b><span><code>slug</code>, <code>pascal</code>, <code>camel</code>, <code>uniqueNamer</code>. ASCII-only names from untrusted layer names.</span></div>
+      </div></div>
+      <div class="layer"><b>External</b><div class="mods">
+        <div class="mod ext"><b>api.figma.com</b><span>Design JSON, render URLs, image fill URLs.</span></div>
+        <div class="mod ext"><b>~/.cache/figma2ui</b><span>Design JSON per file version.</span></div>
+        <div class="mod ext"><b>projectDir</b><span>Generated code, assets, <code>.figma2ui.json</code>.</span></div>
+      </div></div>
+    </div>
+  </section>
+
+  <section id="sequence">
+    <h2><small>2</small>Call sequences</h2>
+    <p class="sub">One diagram per tool. Solid arrows are calls, dashed arrows are returns. A web project runs the three tools once each, in this order.</p>
+    <div class="card">
+      <div class="tabs" id="tabs"></div>
+      <div class="scroll"><svg id="seq" role="img" aria-label="Sequence diagram. Each message is described below the diagram."></svg></div>
+      <div class="caption" aria-live="polite"><div class="n" id="c-n"></div><h3 id="c-t"></h3><p id="c-p"></p></div>
+      <div class="controls">
+        <button id="prev" aria-label="Previous message">← Back</button>
+        <button id="play">Pause</button>
+        <button id="next" aria-label="Next message">Next →</button>
+        <button id="all">Show all</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="contracts">
+    <h2><small>3</small>Tool contracts</h2>
+    <p class="sub">Results are short JSON. They never contain generated code or raw Figma data. Warnings are capped at 5 per chunk.</p>
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3><code>figma_index</code></h3><pre>in  { url, projectDir, stack? }
+out { design, stack, dir,
+      chunks: [{ id, name, nodes, repeat? }],
+      assets: number, tokens: number }</pre><p style="margin-top:8px">Side effects: caches the design, writes the tokens file, saves state.</p></div>
+      <div class="card"><h3><code>figma_chunk</code></h3><pre>in  { projectDir, ids? }   // omit ids = all
+out { page,
+      chunks: [{ id, file, lines, assets,
+                 warnings? }],
+      skipped?, skippedReason? }</pre><p style="margin-top:8px">Side effects: writes chunk files and always rewrites the page file.</p></div>
+      <div class="card"><h3><code>figma_assets</code></h3><pre>in  { projectDir, ids? }   // omit ids = all
+out { dir, total, written, alreadyPresent,
+      skipped?, failed?: [{ id, error }] }</pre><p style="margin-top:8px">Side effects: downloads images and SVG icons. One failed asset does not stop the others.</p></div>
+    </div>
+  </section>
+
+  <section id="pipeline">
+    <h2><small>4</small>Conversion pipeline</h2>
+    <p class="sub">Stages 2 to 5 are pure functions of the cached design, so <code>figma_chunk</code> and <code>figma_assets</code> recompute them from the cache instead of storing intermediate results.</p>
+    <div class="card"><div class="pipe">
+      <div class="stage" style="animation-delay:0s"><b>Fetch</b><span>figma.js · version check, cache, download</span></div>
+      <div class="stage" style="animation-delay:1s"><b>Build tree</b><span>tree.js · node to element, drop hidden nodes</span></div>
+      <div class="stage" style="animation-delay:2s"><b>Tokens</b><span>tree.js · colors, fonts, sizes to CSS variables</span></div>
+      <div class="stage" style="animation-delay:3s"><b>Dedupe</b><span>chunk.js · structural hash, props</span></div>
+      <div class="stage" style="animation-delay:4s"><b>Chunk</b><span>chunk.js · split at 150 nodes</span></div>
+      <div class="stage" style="animation-delay:5s"><b>Emit</b><span>emit.js · per-stack code or spec</span></div>
+      <div class="stage" style="animation-delay:6s"><b>Write</b><span>project.js · guarded write to disk</span></div>
+      <div class="stage" style="animation-delay:7s"><b>Summarize</b><span>tools.js · short JSON to the agent</span></div>
+    </div></div>
+  </section>
+
+  <section id="data">
+    <h2><small>5</small>Data model</h2>
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3>Design (cache entry)</h3><pre>{ name, version,
+  document,   // Figma node subtree
+  styles,     // style id to { name }
+  rawBytes }  // size of the API response</pre></div>
+      <div class="card"><h3>Element (neutral tree)</h3><pre>{ tag,        // div p h1 img button input a
+  name,       // Figma layer name
+  css,        // { 'flex-direction': 'row', ... }
+  children,   // Element[]
+  warn,       // string[]
+  text?,      // literal text
+  attrs?,     // { src, alt, href, placeholder }
+  assets?,    // asset file names used
+  props? }    // slot to prop name (templates)
+
+// Reference to another chunk:
+{ ref, values, assets, children: [] }</pre></div>
+      <div class="card"><h3>Chunk</h3><pre>{ id,         // 'c1', 'c2', ... or 'page'
+  name,       // PascalCase, unique
+  el,         // Element subtree
+  repeat,     // instance count
+  props,      // string[]
+  nodes,      // size, a ref counts as 1
+  assets,     // string[]
+  warnings }  // deduped, with counts</pre></div>
+      <div class="card"><h3>Token and asset</h3><pre>Token { name,   // 'color-1', 'size-heading'
+        value } // '#1a1a1a', '16px'
+
+Asset { id, file,   // 'svg-1-23.svg'
+        kind,       // 'svg' | 'image'
+        source }    // node id | imageRef</pre><p style="margin-top:8px">A token is named after its Figma style when one exists, otherwise by a counter per kind.</p></div>
+    </div>
+  </section>
+
+  <section id="algorithms">
+    <h2><small>6</small>Algorithms</h2>
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3>Node mapping (tree.js)</h3><ul>
+        <li>Auto-layout becomes flex: direction, gap, padding, justify, align, wrap.</li>
+        <li>Sizing: FILL becomes <code>flex: 1 1 0</code> on the main axis or <code>align-self: stretch</code> on the cross axis. HUG sets no size. FIXED sets px and <code>flex-shrink: 0</code>.</li>
+        <li>No auto-layout: parent <code>relative</code>, children <code>absolute</code> with offsets from bounding boxes, plus a warning.</li>
+        <li>Vectors, and groups made only of vectors, become one SVG asset.</li>
+        <li>Image fill on a leaf becomes <code>img</code>; on a container, a background image.</li>
+        <li>Layer names matching button, input, or link set the tag. Text tag comes from font size or an <code>h1</code> to <code>h6</code> layer name.</li>
+        <li>Root frame: <code>width: 100%</code>, <code>max-width</code> of the frame, centered.</li>
+      </ul></div>
+      <div class="card"><h3>Dedupe (chunk.js)</h3><ol>
+        <li>Hash every element, bottom-up: <code>sha1([tag, css, hasText, attrKeys, childHashes])</code>. Text and image content are left out, so cards with different copy match.</li>
+        <li>Walk top-down. A subtree is a repeat if its hash occurs more than once, it has at least 3 nodes, and at most 12 text or image slots. More slots means it is a list, so the walk goes inside it.</li>
+        <li>The first instance becomes the template. A slot whose value differs between instances becomes a prop, named from the layer name.</li>
+        <li>Each instance is replaced by <code>{ ref, values }</code>.</li>
+      </ol></div>
+      <div class="card"><h3>Chunk split (chunk.js)</h3><ol>
+        <li>Each top-level child of the root with 3 or more nodes becomes a chunk.</li>
+        <li>Inside a chunk, a post-order walk keeps a running node count. When adding a child would pass 150, that child is extracted into its own chunk and counts as 1.</li>
+        <li>Post-order means a child is already reduced before its parent decides.</li>
+        <li>What remains of the root becomes the <code>page</code> chunk, which renders the others in order.</li>
+      </ol><p style="margin-top:8px">Known limits: a frame with over 150 direct leaf children stays oversized, and repeat templates are not split. Both are reported in <code>warnings</code>.</p></div>
+    </div>
+  </section>
+
+  <section id="emit">
+    <h2><small>7</small>Stack detection and output</h2>
+    <p class="sub">Priority: explicit <code>stack</code> argument, then the stack saved in <code>.figma2ui.json</code>, then detection. If none applies, <code>figma_index</code> fails and tells the agent to ask the user.</p>
+    <div class="card"><div class="scroll"><table>
+      <tr><th>Signal in projectDir</th><th>Target</th><th>Chunk file</th><th>Component reference</th></tr>
+      <tr><td><code>react-native</code>, <code>expo</code></td><td>spec</td><td><code>Name.md</code></td><td><code>@Name prop="value"</code></td></tr>
+      <tr><td><code>react</code>, <code>next</code></td><td>React</td><td><code>Name.tsx</code> or <code>.jsx</code></td><td><code>&lt;Name prop="value" /&gt;</code></td></tr>
+      <tr><td><code>@angular/core</code></td><td>Angular</td><td><code>Name.component.ts</code></td><td><code>&lt;app-name&gt;</code>, <code>@Input()</code></td></tr>
+      <tr><td><code>vue</code>, <code>nuxt</code></td><td>Vue</td><td><code>Name.vue</code></td><td><code>defineProps</code></td></tr>
+      <tr><td><code>svelte</code>, <code>@sveltejs/kit</code></td><td>Svelte</td><td><code>Name.svelte</code></td><td><code>export let</code></td></tr>
+      <tr><td><code>pubspec.yaml</code>, Gradle, <code>Package.swift</code>, <code>*.xcodeproj</code></td><td>spec</td><td><code>Name.md</code></td><td><code>@Name</code></td></tr>
+      <tr><td><code>index.html</code> only</td><td>HTML</td><td><code>Name.html</code></td><td>Inlined into the page</td></tr>
+    </table></div></div>
+    <div class="grid" style="margin-top:14px">
+      <div class="card"><h3>Styling</h3><ul>
+        <li><b>Tailwind</b>, when <code>tailwindcss</code> is a dependency: exact utilities where one exists (<code>flex</code>, <code>items-center</code>), otherwise arbitrary values (<code>gap-[12px]</code>, <code>[box-shadow:...]</code>). Works on v3 and v4.</li>
+        <li><b>Plain CSS</b> otherwise: one <code>Name.css</code> per chunk, classes named <code>design-chunk-n</code>.</li>
+        <li>Tokens are CSS variables on <code>:root</code> in <code>figma-tokens.css</code>, imported by the page.</li>
+      </ul></div>
+      <div class="card"><h3>One renderer, small syntax table</h3><p><code>render()</code> walks the element tree once. Per-framework differences live in a table of 4 entries: class attribute name, attribute binding, text interpolation, and component tag. <code>wrap()</code> adds the file shell: imports, props, and style links.</p><p>TypeScript is used for React when <code>typescript</code> or <code>tsconfig.json</code> is present.</p></div>
+    </div>
+  </section>
+
+  <section id="api">
+    <h2><small>8</small>Figma API usage</h2>
+    <p class="sub">Tier 1 calls are the scarce ones. The design targets one Tier 1 call per new design version, plus one if the design has vector icons.</p>
+    <div class="card"><div class="scroll"><table>
+      <tr><th>Endpoint</th><th>Used by</th><th>Tier</th><th>When</th></tr>
+      <tr><td><code>GET /v1/files/:key/meta</code></td><td><code>fetchVersion</code></td><td>3</td><td>Every <code>figma_index</code>. A 403 (token lacks the scope) skips the check.</td></tr>
+      <tr><td><code>GET /v1/files/:key/nodes?ids=</code></td><td><code>getDesign</code></td><td>1</td><td>Cache miss only. Without a <code>node-id</code>, <code>GET /v1/files/:key</code> and the first page.</td></tr>
+      <tr><td><code>GET /v1/images/:key?ids=&amp;format=svg</code></td><td><code>svgUrls</code></td><td>1</td><td><code>figma_assets</code>, when SVGs are missing or the file version changed. 100 ids per call.</td></tr>
+      <tr><td><code>GET /v1/files/:key/images</code></td><td><code>imageFillUrls</code></td><td>2</td><td><code>figma_assets</code>, when an image fill is not on disk yet.</td></tr>
+      <tr><td>Presigned asset URL</td><td><code>fetchBytes</code></td><td>none</td><td>Per asset. Sent without the Figma token.</td></tr>
+    </table></div>
+    <p style="margin-top:10px">Client behaviour: 120 s timeout per request. On 429, waits for <code>Retry-After</code> and retries up to 3 times if the wait is 60 s or less; a longer wait fails at once with the wait time.</p></div>
+  </section>
+
+  <section id="state">
+    <h2><small>9</small>State and cache</h2>
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3><code>projectDir/.figma2ui.json</code></h3><pre>{ stack:   { framework, label, styling,
+             ext, assets, root },
+  current: { fileKey, nodeId, version,
+             dir, slug },
+  written: { "&lt;relative path&gt;": "&lt;sha256&gt;" },
+  assetsVersion }</pre><p style="margin-top:8px"><code>written</code> records the hash of every generated file. It is what lets a re-run tell an untouched file from an edited one.</p></div>
+      <div class="card"><h3>Design cache</h3><pre>~/.cache/figma2ui/
+  &lt;fileKey&gt;-&lt;nodeId|page&gt;-&lt;version&gt;.json</pre><ul style="margin-top:8px">
+        <li>Keyed by Figma file version, so it never serves a stale design.</li>
+        <li>Directory mode 0700, file mode 0600. Written to a temp file, then renamed.</li>
+        <li>A corrupt entry is treated as a miss.</li>
+        <li><code>FIGMA2UI_CACHE</code> overrides the location.</li>
+      </ul></div>
+      <div class="card"><h3>Output layout</h3><pre>src/figma/&lt;design&gt;/      components, Page,
+                         figma-tokens.css
+public/figma/            assets
+static/figma/            assets (SvelteKit)
+figma2ui/&lt;design&gt;/       spec targets
+figma2ui/assets/         spec target assets</pre></div>
+    </div>
+  </section>
+
+  <section id="safety">
+    <h2><small>10</small>Safeguards</h2>
+    <p class="sub">Layer names and text come from the design file, so they are treated as untrusted input.</p>
+    <div class="card"><div class="scroll"><table>
+      <tr><th>Risk</th><th>Control</th><th>Where</th></tr>
+      <tr><td>Design text breaking or injecting template code</td><td>Text and attributes are written as numeric entities for <code>&amp; &lt; &gt; " ' { } ` \ @</code> and newline, which are literal in JSX, Vue, Svelte, Angular, and HTML.</td><td><code>emit.js esc()</code></td></tr>
+      <tr><td>Layer name used as a path or identifier</td><td>Names are reduced to ASCII letters and digits before use.</td><td><code>names.js</code></td></tr>
+      <tr><td>Writing outside the project</td><td>Absolute <code>projectDir</code> required. Resolved path must be inside <code>src/figma</code>, <code>public/figma</code>, <code>static/figma</code>, or <code>figma2ui</code>. Symlinked output folders are refused.</td><td><code>project.js safePath()</code></td></tr>
+      <tr><td>Overwriting manual edits</td><td>A file is replaced only if its hash matches the one recorded at generation. Otherwise it is listed in <code>skipped</code>.</td><td><code>project.js writeGenerated()</code></td></tr>
+      <tr><td>Token leak</td><td>Read from <code>FIGMA_TOKEN</code>, sent only to <code>api.figma.com</code>, never logged or cached, not sent to presigned asset URLs.</td><td><code>figma.js</code></td></tr>
+      <tr><td>Link to a non-Figma host</td><td>Only <code>https</code> links on <code>figma.com</code> or <code>www.figma.com</code> are accepted.</td><td><code>figma.js parseFigmaUrl()</code></td></tr>
+      <tr><td>Agent following text found in a design</td><td>Spec files state that quoted strings are design data. The skill file repeats the rule.</td><td><code>emit.js</code>, <code>skill/SKILL.md</code></td></tr>
+    </table></div></div>
+  </section>
+
+  <section id="errors">
+    <h2><small>11</small>Error handling</h2>
+    <p class="sub">Every handler error reaches the agent as <code>isError: true</code> with a message that says what to do next.</p>
+    <div class="card"><div class="scroll"><table>
+      <tr><th>Condition</th><th>Behaviour</th></tr>
+      <tr><td><code>FIGMA_TOKEN</code> missing</td><td>Fails before any network call.</td></tr>
+      <tr><td>403 from Figma</td><td>Fails: token invalid or no access. On the meta endpoint only, continues without a version check.</td></tr>
+      <tr><td>404, or node not in file</td><td>Fails with a prompt to check the link.</td></tr>
+      <tr><td>429 with a long wait</td><td>Fails at once, with the wait in hours and a note on seat limits.</td></tr>
+      <tr><td>Figma Make link, or a Make code layer as root</td><td>Fails: no design layers to convert. A nested code layer is only a warning.</td></tr>
+      <tr><td>Stack not detected</td><td>Fails and tells the agent to ask the user, then pass <code>stack</code>.</td></tr>
+      <tr><td><code>figma_chunk</code> or <code>figma_assets</code> before <code>figma_index</code></td><td>Fails: call <code>figma_index</code> first.</td></tr>
+      <tr><td>Unknown chunk or asset id</td><td>Fails and lists the unknown ids.</td></tr>
+      <tr><td>One asset download fails</td><td>Recorded under <code>failed</code>. Other assets continue.</td></tr>
+    </table></div></div>
+  </section>
+
+  <section id="tests">
+    <h2><small>12</small>Tests and open items</h2>
+    <div class="grid" style="margin-top:16px">
+      <div class="card"><h3>Covered</h3><ul>
+        <li>28 <code>node:test</code> cases in <code>test/figma2ui.test.js</code>, with <code>fetch</code> mocked.</li>
+        <li>URL parsing, flex mapping, absolute fallback, dedupe and props, chunk limit, stack detection, escaping, each emitter, path and symlink guards, edit protection, cache reuse, rate-limit errors.</li>
+        <li>Generated output accepted by esbuild (React), the Vue and Svelte compilers, the Angular template parser, and Tailwind v4.</li>
+        <li>Server answers <code>tools/list</code> over stdio.</li>
+      </ul></div>
+      <div class="card"><h3>Not yet verified</h3><ul>
+        <li>A full run on a real layered Figma design, with a visual comparison.</li>
+        <li>The <code>/meta</code> version check against the real API.</li>
+        <li>Registration inside each AI tool.</li>
+      </ul></div>
+      <div class="card"><h3>Out of scope in this version</h3><ul>
+        <li>Native code generators for mobile stacks.</li>
+        <li>Breakpoint-specific layouts, interactions, animation.</li>
+        <li>Reuse of existing project components.</li>
+        <li>Rotation, blend modes, and mixed text styles, which are flagged in <code>warnings</code>.</li>
+      </ul></div>
+    </div>
+  </section>
+</main>
+
+<script>
+  const LIFE = [['Agent', 1], ['server.js'], ['tools.js'], ['figma.js'], ['Figma API', 1], ['chunk.js'], ['emit.js'], ['project.js']];
+  const [AG, SV, TL, FG, API, CH, EM, PR] = [0, 1, 2, 3, 4, 5, 6, 7];
+  // [from, to, label, detail, isReturn]
+  const FLOWS = {
+    figma_index: [
+      [AG, SV, 'tools/call figma_index', 'JSON-RPC over stdio with { url, projectDir, stack? }. zod validates the arguments.'],
+      [SV, TL, 'figmaIndex(args)', 'server.js only wraps the handler. All logic lives in tools.js.'],
+      [TL, PR, 'requireProject, loadState', 'projectDir must be an absolute, existing folder. Reads .figma2ui.json, or starts with empty state.'],
+      [TL, FG, 'parseFigmaUrl(url)', 'Returns { fileKey, nodeId }. Rejects non-Figma hosts and Figma Make links.'],
+      [TL, TL, 'resolve stack', 'stack.js: explicit stack argument, else saved stack, else detectStack(projectDir). Fails here if nothing is found.'],
+      [TL, FG, 'fetchVersion(fileKey)', 'Cheap version check, used as the cache key.'],
+      [FG, API, 'GET /files/:key/meta', 'Tier 3 endpoint. A 403 returns null, and the version is then taken from the download.'],
+      [TL, FG, 'getDesign(key, node, version)', 'Returns the cached design when this version is already on disk.'],
+      [FG, API, 'GET /files/:key/nodes', 'Cache miss only. The one Tier 1 call for a new design version. The large JSON stays in this process.'],
+      [FG, FG, 'write cache', 'Stores { name, version, document, styles, rawBytes } under ~/.cache/figma2ui with mode 0600.'],
+      [TL, CH, 'analyze(design)', 'tree.js builds the element tree and tokens. chunk.js dedupes repeats and splits chunks.'],
+      [TL, PR, 'write tokens, saveState', 'Writes figma-tokens.css through the guarded writer. Saves stack and current design.'],
+      [SV, AG, 'chunk map', 'Short JSON: design, stack, dir, chunks [{ id, name, nodes, repeat? }], asset and token counts.', 1],
+    ],
+    figma_chunk: [
+      [AG, SV, 'tools/call figma_chunk', '{ projectDir, ids? }. No URL needed. Omitting ids processes every chunk in one call.'],
+      [SV, TL, 'figmaChunk(args)', 'Validates that every requested id exists before writing anything.'],
+      [TL, PR, 'loadState', 'Reads the current design and stack. Fails if figma_index has not run.'],
+      [TL, FG, 'getDesign (cache)', 'Read from the disk cache by the saved version. No network call.'],
+      [TL, CH, 'analyze(design)', 'Recomputed from the cache. It is deterministic, so chunk ids match those from figma_index.'],
+      [TL, EM, 'emitChunk(chunk, ctx)', 'Per chunk: returns [{ rel, content }]. A code file, plus a CSS file when the project has no Tailwind.'],
+      [TL, PR, 'writeGenerated(rel, content)', 'Checks the allow-listed folders and symlinks. Skips a file that was edited since generation.'],
+      [TL, EM, 'emitChunk(page)', 'The page composes all chunks in order. It is regenerated on every call.'],
+      [TL, PR, 'write page, saveState', 'Records the sha256 of each written file in state.written.'],
+      [SV, AG, 'paths and warnings', 'Short JSON: page path, and per chunk { id, file, lines, assets, warnings? }. No code.', 1],
+    ],
+    figma_assets: [
+      [AG, SV, 'tools/call figma_assets', '{ projectDir, ids? }. Omitting ids downloads every asset.'],
+      [SV, TL, 'figmaAssets(args)', 'Loads state, reads the design from cache, and runs analyze to get the asset list.'],
+      [TL, PR, 'fileExists per asset', 'Image fills are named by content hash, so an existing file is current. SVGs are refreshed only when the file version changed.'],
+      [TL, FG, 'svgUrls(nodeIds)', 'Only when SVG assets are needed.'],
+      [FG, API, 'GET /images/:key?format=svg', 'Tier 1. Batches of 100 ids. Returns presigned URLs.'],
+      [TL, FG, 'imageFillUrls(fileKey)', 'Only when an image fill is missing on disk.'],
+      [FG, API, 'GET /files/:key/images', 'Tier 2. Maps imageRef to a presigned URL.'],
+      [FG, API, 'fetchBytes(presigned url)', 'Per asset, without the Figma token. A failure is recorded and the loop continues.'],
+      [TL, PR, 'writeGenerated(bytes)', 'Writes to public/figma, static/figma, or figma2ui/assets. Saves assetsVersion when nothing failed.'],
+      [SV, AG, 'counts', 'Short JSON: dir, total, written, alreadyPresent, and skipped or failed lists when present.', 1],
+    ],
+  };
+  const X = (k) => 62 + k * 119;
+  const ROW = 40, TOP = 78;
+  const $ = (id) => document.getElementById(id);
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let flow = 'figma_index', cur = 0, timer = null;
+
+  for (const name of Object.keys(FLOWS)) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.onclick = () => { stop(); flow = name; draw(); show(0); };
+    $('tabs').append(b);
+  }
+
+  function draw() {
+    const msgs = FLOWS[flow];
+    const h = TOP + msgs.length * ROW + 16;
+    let s = '';
+    LIFE.forEach(([name, ext], k) => {
+      s += `<line class="life" x1="${X(k)}" y1="46" x2="${X(k)}" y2="${h - 6}" />`;
+      s += `<g class="head${ext ? ' ext' : ''}"><rect x="${X(k) - 52}" y="10" width="104" height="36" rx="8" /><text x="${X(k)}" y="33">${name}</text></g>`;
+    });
+    msgs.forEach(([a, b, label, , ret], k) => {
+      const y = TOP + k * ROW;
+      let body;
+      if (a === b) {
+        body = `<path d="M${X(a)} ${y - 8} h28 v16 h-22" /><polygon points="${X(a)},${y + 8} ${X(a) + 9},${y + 3} ${X(a) + 9},${y + 13}" /><text x="${X(a) + 36}" y="${y + 4}">${label}</text>`;
+      } else {
+        const dir = b > a ? 1 : -1;
+        const left = Math.min(a, b);
+        const end = left >= 4;
+        body = `<line x1="${X(a)}" y1="${y}" x2="${X(b) - dir * 9}" y2="${y}" /><polygon points="${X(b)},${y} ${X(b) - dir * 10},${y - 5} ${X(b) - dir * 10},${y + 5}" />`
+          + `<text x="${end ? X(Math.max(a, b)) - 12 : X(left) + 10}" y="${y - 7}" text-anchor="${end ? 'end' : 'start'}">${label}</text>`;
+      }
+      s += `<g class="msg${ret ? ' ret' : ''}">${body}</g>`;
+    });
+    $('seq').setAttribute('viewBox', `0 0 960 ${h}`);
+    $('seq').innerHTML = s;
+    [...$('tabs').children].forEach((b) => b.setAttribute('aria-pressed', b.textContent === flow));
+  }
+
+  function show(n) {
+    const msgs = FLOWS[flow];
+    cur = (n + msgs.length) % msgs.length;
+    document.querySelectorAll('.msg').forEach((g, k) => {
+      g.classList.toggle('show', k <= cur);
+      g.classList.toggle('cur', k === cur);
+    });
+    $('c-n').textContent = `${flow} · message ${cur + 1} of ${msgs.length}`;
+    $('c-t').textContent = `${LIFE[msgs[cur][0]][0]} → ${LIFE[msgs[cur][1]][0]}: ${msgs[cur][2]}`;
+    $('c-p').textContent = msgs[cur][3];
+  }
+  function stop() { clearInterval(timer); timer = null; $('play').textContent = 'Play'; }
+  function play() { timer = setInterval(() => show(cur + 1), 3200); $('play').textContent = 'Pause'; }
+
+  $('prev').onclick = () => { stop(); show(cur - 1); };
+  $('next').onclick = () => { stop(); show(cur + 1); };
+  $('play').onclick = () => (timer ? stop() : play());
+  $('all').onclick = () => { stop(); show(FLOWS[flow].length - 1); };
+  draw();
+  show(0);
+  if (calm) stop(); else play();
+</script>
+</body>
+</html>

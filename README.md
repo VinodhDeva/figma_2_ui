@@ -4,7 +4,7 @@ Turn a Figma design into UI code in your project's own tech stack, while spendin
 agent credits as possible.
 
 figma2ui is a local [MCP](https://modelcontextprotocol.io) server, so it works with any AI tool
-that supports MCP: Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, and others.
+that supports MCP: Kiro, Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, and others.
 
 ## Why it uses fewer credits
 
@@ -69,10 +69,11 @@ Replace `/absolute/path/to/figma_2_ui` with the folder you cloned.
 claude mcp add figma2ui -e FIGMA_TOKEN=your_token -- node /absolute/path/to/figma_2_ui/src/server.js
 ```
 
-**Claude Desktop, Cursor, Windsurf, Gemini CLI**
+**Kiro, Claude Desktop, Cursor, Windsurf, Gemini CLI**
 
 | Tool | Config file |
 |------|-------------|
+| Kiro | `.kiro/settings/mcp.json` in the project, or `~/.kiro/settings/mcp.json` for all projects |
 | Claude Desktop | `claude_desktop_config.json` |
 | Cursor | `.cursor/mcp.json` |
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` |
@@ -108,6 +109,7 @@ env = { FIGMA_TOKEN = "your_token" }
 | Claude | Copy the `skill` folder to `~/.claude/skills/figma-to-ui` |
 | Codex and tools that read `AGENTS.md` | Paste its body into `AGENTS.md` |
 | Cursor | Paste its body into a file in `.cursor/rules/` |
+| Kiro | Paste its body into `.kiro/steering/figma-to-ui.md` |
 
 ## Usage
 
@@ -204,4 +206,6 @@ npm test
 | `src/stack.js` | Stack detection |
 | `src/emit.js` | Code and spec output for each target |
 | `src/project.js` | Guarded file writes |
+| `docs/system-design.html` | Animated overview for stakeholders |
+| `docs/low-level-design.html` | Detailed design for engineers |
 | `docs/superpowers/` | Original design and implementation plan |

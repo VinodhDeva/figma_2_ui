@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>figma2ui: how it works</title>
+<style>
+  :root {
+    --bg: #f5f2fb; --card: #ffffff; --ink: #1a1626; --muted: #5f5a70; --line: #dcd5ec;
+    --accent: #6d28d9; --small: #b0127a; --soft: #ede4ff; --zone: #fbeef6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121019; --card: #1c1927; --ink: #edeaf5; --muted: #a8a2ba; --line: #373248;
+      --accent: #b794ff; --small: #f472b6; --soft: #2c2148; --zone: #2a1524;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 0 16px 64px; }
+  header { padding: 56px 0 8px; }
+  .tag { color: var(--accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 13px; }
+  h1 { font-size: clamp(30px, 5vw, 50px); line-height: 1.1; margin: 10px 0 14px; letter-spacing: -.02em; }
+  h2 { font-size: 26px; margin: 56px 0 6px; letter-spacing: -.01em; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 20px; color: var(--muted); max-width: 720px; }
+  .sub { color: var(--muted); max-width: 720px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 18px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p, .card li { font-size: 15px; color: var(--muted); }
+  .card ul { margin: 0; padding-left: 18px; }
+  code { font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+
+  /* Flow diagram */
+  .flow { margin-top: 18px; padding: 12px; }
+  .scroll { overflow-x: auto; }
+  svg { display: block; width: 100%; min-width: 660px; height: auto; }
+  .zone { fill: var(--zone); stroke: var(--small); stroke-dasharray: 6 6; }
+  .zone-label { fill: var(--small); font-size: 13px; font-weight: 700; }
+  .edge { stroke: var(--line); stroke-width: 3; transition: stroke .3s; }
+  .edge.on { stroke: var(--accent); }
+  .node rect { fill: var(--card); stroke: var(--line); stroke-width: 2; transition: stroke .3s, fill .3s; }
+  .node.on rect { stroke: var(--accent); fill: var(--soft); }
+  .node.work rect { animation: pulse .9s ease-in-out infinite alternate; }
+  @keyframes pulse { to { stroke-width: 6; } }
+  .node text { fill: var(--ink); text-anchor: middle; }
+  .node .t { font-size: 17px; font-weight: 700; }
+  .node .s { font-size: 12.5px; fill: var(--muted); }
+  #packet { fill: var(--small); }
+  #packet.big { fill: var(--accent); }
+  .caption { display: grid; gap: 4px; padding: 14px 8px 6px; min-height: 128px; }
+  .caption .n { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .caption h3 { margin: 0; font-size: 21px; }
+  .caption p { margin: 0; color: var(--muted); max-width: 760px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px 8px 4px; }
+  button { font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 8px 14px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:focus-visible { outline: 3px solid var(--small); outline-offset: 2px; }
+  .dots { display: flex; gap: 6px; margin-left: auto; }
+  .dots button { width: 14px; height: 14px; padding: 0; border-radius: 50%; }
+  .dots button.on { background: var(--accent); border-color: var(--accent); }
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; color: var(--muted); padding: 4px 8px; }
+  .legend i { display: inline-block; border-radius: 50%; vertical-align: middle; margin-right: 6px; }
+
+  /* Measurement bars */
+  .bar-row { display: grid; gap: 4px; margin: 14px 0; }
+  .bar-row b { font-size: 15px; }
+  .track { background: var(--bg); border-radius: 8px; height: 30px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 8px; animation: grow 1.6s ease-out both; }
+  @keyframes grow { from { width: 0; } }
+  .note { font-size: 14px; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chips span { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 13px; font-size: 14px; }
+  .ok h3 { color: var(--small); } .warn h3 { color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { .bar, .node.work rect { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="tag">figma2ui · system design</div>
+    <h1>From Figma design to working UI, without paying the AI to read the design</h1>
+    <p class="lead">figma2ui is a small helper that runs on the developer's machine. It converts the design itself, so the AI assistant only handles short messages. It works with Kiro, Claude Code, Cursor, and other AI tools.</p>
+  </header>
+
+  <section aria-labelledby="h-flow">
+    <h2 id="h-flow">How one request flows</h2>
+    <p class="sub">Dot size shows how much data moves. The large design data never passes through the AI.</p>
+    <div class="card flow">
+      <div class="scroll">
+        <svg viewBox="0 0 960 430" role="img" aria-label="Flow between the developer, the AI assistant, the figma2ui server, Figma, and the project files. The steps are described below the diagram.">
+          <rect class="zone" x="525" y="150" width="420" height="262" rx="16" />
+          <text class="zone-label" x="541" y="402">Stays on the developer's machine</text>
+          <line class="edge" id="e-dev-agent" x1="190" y1="210" x2="270" y2="210" />
+          <line class="edge" id="e-agent-server" x1="450" y1="210" x2="540" y2="210" />
+          <line class="edge" id="e-figma-server" x1="800" y1="120" x2="700" y2="170" />
+          <line class="edge" id="e-server-project" x1="700" y1="250" x2="800" y2="300" />
+          <line class="edge" id="e-agent-project" x1="430" y1="250" x2="790" y2="340" stroke-dasharray="5 7" />
+          <g class="node" id="n-dev"><rect x="40" y="170" width="150" height="80" rx="12" /><text class="t" x="115" y="206">Developer</text><text class="s" x="115" y="228">pastes a Figma link</text></g>
+          <g class="node" id="n-agent"><rect x="270" y="170" width="180" height="80" rx="12" /><text class="t" x="360" y="206">AI assistant</text><text class="s" x="360" y="228">Kiro · Claude Code · Cursor</text></g>
+          <g class="node" id="n-server"><rect x="540" y="170" width="180" height="80" rx="12" /><text class="t" x="630" y="206">figma2ui</text><text class="s" x="630" y="228">converts the design</text></g>
+          <g class="node" id="n-figma"><rect x="790" y="40" width="140" height="80" rx="12" /><text class="t" x="860" y="76">Figma</text><text class="s" x="860" y="98">the design file</text></g>
+          <g class="node" id="n-project"><rect x="790" y="300" width="140" height="80" rx="12" /><text class="t" x="860" y="336">Your project</text><text class="s" x="860" y="358">code and images</text></g>
+          <circle id="packet" r="7" />
+        </svg>
+      </div>
+      <div class="legend">
+        <span><i style="width:22px;height:22px;background:var(--accent)"></i>Large design data or code</span>
+        <span><i style="width:11px;height:11px;background:var(--small)"></i>Short message</span>
+      </div>
+      <div class="caption" aria-live="polite">
+        <div class="n" id="c-n"></div>
+        <h3 id="c-t"></h3>
+        <p id="c-p"></p>
+      </div>
+      <div class="controls">
+        <button id="prev" aria-label="Previous step">← Back</button>
+        <button id="play">Pause</button>
+        <button id="next" aria-label="Next step">Next →</button>
+        <div class="dots" id="dots"></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-why">
+    <h2 id="h-why">Why this saves AI credits</h2>
+    <p class="sub">AI assistants charge for everything they read and write. figma2ui keeps the bulky part away from them.</p>
+    <div class="card" style="margin-top:18px">
+      <div class="bar-row"><b>Raw design data from Figma: 641 KB</b><div class="track"><div class="bar" style="width:100%;background:var(--accent)"></div></div></div>
+      <div class="bar-row"><b>What the AI assistant received: 1.3 KB</b><div class="track"><div class="bar" style="width:0.2%;min-width:6px;background:var(--small)"></div></div></div>
+      <p class="note">Measured on a synthetic 601-layer test design, where 96 identical cards became one reusable component. Real designs will give different numbers.</p>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>Conversion runs as code</h3><p>Turning layers into components is done by a program, not by the AI. A program costs no credits.</p></div>
+      <div class="card"><h3>Repeats are built once</h3><p>A grid of similar cards becomes one component, used many times.</p></div>
+      <div class="card"><h3>Work is split into chunks</h3><p>Large screens are cut into sections, so the assistant opens only the part that needs attention.</p></div>
+      <div class="card"><h3>Designs are remembered</h3><p>An unchanged design is not downloaded from Figma again.</p></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-platforms">
+    <h2 id="h-platforms">One helper, every AI tool</h2>
+    <p class="sub">figma2ui speaks MCP, the open standard that AI tools use to connect to helpers. The same server is registered once in each tool, plus a short instruction file that tells the assistant the cheapest way to use it.</p>
+    <div class="grid">
+      <div class="card"><h3>Kiro</h3><ul><li>Register in <code>.kiro/settings/mcp.json</code></li><li>Instructions go in <code>.kiro/steering/</code></li></ul></div>
+      <div class="card"><h3>Claude Code</h3><ul><li>Register with <code>claude mcp add</code></li><li>Instructions install as a skill</li></ul></div>
+      <div class="card"><h3>Cursor</h3><ul><li>Register in <code>.cursor/mcp.json</code></li><li>Instructions go in <code>.cursor/rules/</code></li></ul></div>
+      <div class="card"><h3>Others</h3><ul><li>Windsurf, Codex, Gemini CLI, Claude Desktop</li><li>Instructions go in <code>AGENTS.md</code> or the tool's rules file</li></ul></div>
+    </div>
+    <h2 id="h-stacks" style="font-size:20px;margin-top:32px">Output matches the project's tech stack</h2>
+    <p class="sub">The stack is detected automatically. Web projects get ready code. Mobile and other projects get a compact blueprint that the assistant turns into native code, which costs more credits.</p>
+    <div class="chips"><span>React / Next.js</span><span>Vue / Nuxt</span><span>Svelte</span><span>Angular</span><span>HTML</span><span>Tailwind or plain CSS</span><span>Flutter, SwiftUI, Compose, React Native: blueprint</span></div>
+  </section>
+
+  <section aria-labelledby="h-status">
+    <h2 id="h-status">Where it stands today</h2>
+    <div class="grid">
+      <div class="card ok"><h3>Done</h3><ul><li>Server built, with 28 automated tests passing</li><li>Generated code accepted by the React, Vue, Svelte, Angular, and Tailwind build tools</li><li>Published on GitHub</li></ul></div>
+      <div class="card warn"><h3>Not yet verified</h3><ul><li>A full run on a real Figma design, with a visual comparison</li><li>Setup inside each AI tool. So far only the connection protocol was tested</li></ul></div>
+      <div class="card warn"><h3>Known limits</h3><ul><li>Needs a Figma Dev or Full seat for regular use. Other seats allow only a few designs per month</li><li>Figma Make files cannot be converted</li><li>Animations and app logic are still added by the assistant</li></ul></div>
+    </div>
+    <p class="note" style="margin-top:18px">Engineering detail: <a href="low-level-design.html" style="color:var(--accent)">low-level design</a>.</p>
+  </section>
+</main>
+
+<script>
+  const POS = { dev: [115, 210], agent: [360, 210], server: [630, 210], figma: [860, 80], project: [860, 340] };
+  const STEPS = [
+    { from: 'dev', to: 'agent', edge: 'dev-agent', t: 'The developer pastes a Figma link', p: 'They ask the AI assistant to build the screen. This is the only manual step.' },
+    { from: 'agent', to: 'server', edge: 'agent-server', t: 'The assistant asks figma2ui', p: 'It sends a short request: the link and the project folder.' },
+    { from: 'figma', to: 'server', edge: 'figma-server', big: true, t: 'figma2ui downloads the design directly', p: 'The large design data goes from Figma straight to the developer\'s machine. It does not pass through the AI, so it costs no credits.' },
+    { from: 'server', to: 'server', work: true, t: 'figma2ui converts it with plain code', p: 'It detects the project\'s tech stack, splits the screen into sections, and merges repeated parts into one component.' },
+    { from: 'server', to: 'agent', edge: 'agent-server', t: 'Only a short summary goes back', p: 'The assistant receives a brief list of sections, not the design itself.' },
+    { from: 'server', to: 'project', edge: 'server-project', big: true, t: 'Code and images are written to the project', p: 'figma2ui saves the components and images as files. The assistant is told only the file names and any warnings.' },
+    { from: 'agent', to: 'project', edge: 'agent-project', t: 'The assistant finishes the job', p: 'It connects the new screen to the app and adds behaviour. It opens a file only when a warning needs a fix.' },
+  ];
+  const $ = (id) => document.getElementById(id);
+  const packet = $('packet');
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let i = 0;
+  let timer = null;
+
+  STEPS.forEach((_, n) => {
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', `Go to step ${n + 1}`);
+    b.onclick = () => { stop(); show(n); };
+    $('dots').append(b);
+  });
+
+  function show(n) {
+    i = (n + STEPS.length) % STEPS.length;
+    const s = STEPS[i];
+    $('c-n').textContent = `Step ${i + 1} of ${STEPS.length}`;
+    $('c-t').textContent = s.t;
+    $('c-p').textContent = s.p;
+    document.querySelectorAll('.node').forEach((el) => el.classList.remove('on', 'work'));
+    document.querySelectorAll('.edge').forEach((el) => el.classList.remove('on'));
+    $(`n-${s.from}`).classList.add('on');
+    $(`n-${s.to}`).classList.add('on');
+    if (s.work) $('n-server').classList.add('work');
+    if (s.edge) $(`e-${s.edge}`).classList.add('on');
+    [...$('dots').children].forEach((d, k) => d.classList.toggle('on', k === i));
+    packet.classList.toggle('big', !!s.big);
+    packet.setAttribute('r', s.big ? 17 : 7);
+    // The dot fades on arrival so it does not cover the label. Reduced motion shows highlights only.
+    packet.style.display = s.work || calm ? 'none' : '';
+    const at = (key) => `translate(${POS[key][0]}px, ${POS[key][1]}px)`;
+    packet.style.transition = 'none';
+    packet.style.opacity = 1;
+    packet.style.transform = at(s.from);
+    packet.getBoundingClientRect(); // forces the start position to apply before the move
+    packet.style.transition = 'transform 1.3s ease-in-out, opacity .5s 1.3s';
+    packet.style.transform = at(s.to);
+    packet.style.opacity = 0;
+  }
+  function stop() { clearInterval(timer); timer = null; $('play').textContent = 'Play'; }
+  function play() { timer = setInterval(() => show(i + 1), 4200); $('play').textContent = 'Pause'; }
+
+  $('prev').onclick = () => { stop(); show(i - 1); };
+  $('next').onclick = () => { stop(); show(i + 1); };
+  $('play').onclick = () => (timer ? stop() : play());
+  show(0);
+  if (calm) stop(); else play();
+</script>
+</body>
+</html>
