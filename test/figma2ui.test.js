@@ -269,3 +269,35 @@ test('clear errors for missing token, unknown id, no index', async () => {
   await assert.rejects(figmaIndex({ url: URL_, projectDir: dir }), /FIGMA_TOKEN/);
   await assert.rejects(figmaIndex({ url: URL_, projectDir: 'relative/path' }), /absolute/);
 });
+
+test('usage report counts Figma calls and tokens per step', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  const index = await figmaIndex({ url: URL_, projectDir: dir });
+  assert.equal(index.usage.figmaApiCalls, 2);
+  const chunk = await figmaChunk({ projectDir: dir });
+  assert.equal(chunk.usage.figmaApiCalls, 0);
+  const assets = await figmaAssets({ projectDir: dir });
+  assert.equal(assets.usage.figmaApiCalls, 2);
+  assert.deepEqual({ ...assets.usage.designTotal, tokens: 0 }, { figmaApiCalls: 4, tier1: 2, tokens: 0 });
+  assert.ok(assets.usage.designTotal.tokens > assets.usage.tokens);
+  const report = readFileSync(join(dir, 'figma2ui/usage-report.md'), 'utf8');
+  for (const t of [
+    '**Landing Page**, Figma file version 7',
+    '| MCP tool calls | 3 |',
+    '| Figma API calls | 4 (Tier 1: 2, Tier 2: 1, Tier 3: 1) |',
+    '| Design cache hits | 2 |',
+    "| Asset downloads from Figma's CDN | 4 |",
+    '| `GET /v1/files/:key/nodes` | 1 | 200 | 1 |',
+  ]) assert.ok(report.includes(t), t);
+  assert.ok(!report.includes('cdn.test') && !report.includes('KEY123'), 'no signed URLs or file keys in the report');
+});
+
+test('failed steps are still counted and reported', async () => {
+  globalThis.fetch = async () => new Response('{}', { status: 429, headers: { 'retry-after': '188594' } });
+  const dir = project({ react: '1' });
+  await assert.rejects(figmaIndex({ url: URL_, projectDir: dir }), /Figma API calls in this step: 1\. Report: figma2ui\/usage-report\.md/);
+  const report = readFileSync(join(dir, 'figma2ui/usage-report.md'), 'utf8');
+  assert.ok(report.includes('| `GET /v1/files/:key/meta` | 3 | 429 | 1 |'));
+  assert.ok(report.includes('failed: Figma rate limit'));
+});

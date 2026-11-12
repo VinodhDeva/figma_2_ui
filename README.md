@@ -141,10 +141,26 @@ src/figma/<design>/               Components, Page, and figma-tokens.css
 public/figma/                     Images and icons (SvelteKit: static/figma/)
 figma2ui/<design>/                Non-web stacks: index.md, specs, tokens.css
 figma2ui/assets/                  Non-web stacks: images and icons
+figma2ui/usage-report.md          Figma API calls and token estimates
 ```
 
 Render `Page` from your app's route or entry file. A generated file is replaced only if it has
 not changed since it was generated, so your edits are kept. Delete a file to regenerate it.
+
+## Usage report
+
+Every tool result ends with a short `usage` block: Figma API calls in that step, estimated
+tokens for that step, and running totals for the design. The full report is written to
+`figma2ui/usage-report.md` in your project after every call:
+
+- Figma API calls by request, rate-limit tier, and status, including failed calls
+- Design cache hits and asset downloads, which do not count toward Figma limits
+- Estimated tokens for each tool call's input and result
+- How much design data was kept out of the AI
+
+Token counts are estimates (bytes / 4) of what passes between the AI and this MCP. They do not
+include the AI's own reasoning, the tool definitions, or files the AI opens. Your AI tool's
+usage screen shows the full session.
 
 ## Figma plans and rate limits
 
@@ -206,6 +222,7 @@ npm test
 | `src/stack.js` | Stack detection |
 | `src/emit.js` | Code and spec output for each target |
 | `src/project.js` | Guarded file writes |
+| `src/usage.js` | Usage tracking and report |
 | `docs/system-design.html` | Animated overview for stakeholders |
 | `docs/low-level-design.html` | Detailed design for engineers |
 | `docs/superpowers/` | Original design and implementation plan |

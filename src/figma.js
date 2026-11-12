@@ -4,6 +4,11 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const API = 'https://api.figma.com';
+// Every Figma request and cache hit, so tools can report what each step cost.
+export const apiLog = [];
+const tierOf = (path) => (/\/meta$/.test(path) ? 3 : /^\/v1\/files\/[^/]+\/images$/.test(path) ? 2 : 1);
+const labelOf = (path) => `GET ${path.replace(/^\/v1\/(files|images)\/[^/]+/, '/v1/$1/:key')}`;
+
 const cacheDir = () => process.env.FIGMA2UI_CACHE || join(homedir(), '.cache', 'figma2ui');
 
 export function parseFigmaUrl(url) {
@@ -27,7 +32,15 @@ export function parseFigmaUrl(url) {
 async function api(path, retries = 3) {
   const token = process.env.FIGMA_TOKEN;
   if (!token) throw new Error('FIGMA_TOKEN is not set. Add a Figma personal access token to this MCP server\'s env.');
-  const res = await fetch(API + path, { headers: { 'X-Figma-Token': token }, signal: AbortSignal.timeout(120_000) });
+  const bare = path.split('?')[0];
+  let res;
+  try {
+    res = await fetch(API + path, { headers: { 'X-Figma-Token': token }, signal: AbortSignal.timeout(120_000) });
+  } catch (e) {
+    apiLog.push({ call: labelOf(bare), tier: tierOf(bare), status: 'network error' });
+    throw e;
+  }
+  apiLog.push({ call: labelOf(bare), tier: tierOf(bare), status: res.status });
   if (res.status === 429) {
     const wait = Number(res.headers.get('retry-after')) || 5;
     if (retries === 0 || wait > 60) {
@@ -66,7 +79,9 @@ export async function getDesign(fileKey, nodeId, version) {
   const fileFor = (v) => join(cacheDir(), `${`${fileKey}-${nodeId ?? 'page'}-${v}`.replace(/[^A-Za-z0-9-]/g, '-')}.json`);
   if (version) {
     try {
-      return JSON.parse(await readFile(fileFor(version), 'utf8'));
+      const cached = JSON.parse(await readFile(fileFor(version), 'utf8'));
+      apiLog.push({ call: 'design cache', tier: null, status: 'hit' });
+      return cached;
     } catch {
       // Missing or corrupt cache: download again.
     }
@@ -96,6 +111,8 @@ export const imageFillUrls = async (fileKey) =>
 export async function fetchBytes(url) {
   if (!url?.startsWith('https://')) throw new Error('Figma returned no usable download URL.');
   const res = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+  // The presigned URL carries a signature, so it is never logged.
+  apiLog.push({ call: 'asset download (CDN)', tier: null, status: res.status });
   if (!res.ok) throw new Error(`Download failed with ${res.status}.`);
   return Buffer.from(await res.arrayBuffer());
 }

@@ -4,6 +4,7 @@ import { fetchBytes, fetchVersion, getDesign, imageFillUrls, parseFigmaUrl, svgU
 import { slug } from './names.js';
 import { fileExists, loadState, requireProject, saveState, writeGenerated } from './project.js';
 import { detectStack, parseStack } from './stack.js';
+import { tracked } from './usage.js';
 
 const MAX_WARNINGS = 5;
 
@@ -21,7 +22,7 @@ async function current(projectDir) {
   return { state, analysis, fileKey, ctx: contextFor(analysis, state.stack, dir, designSlug) };
 }
 
-export async function figmaIndex({ url, projectDir, stack }) {
+async function indexDesign({ url, projectDir, stack }) {
   requireProject(projectDir);
   const { fileKey, nodeId } = parseFigmaUrl(url);
   const state = await loadState(projectDir);
@@ -36,7 +37,7 @@ export async function figmaIndex({ url, projectDir, stack }) {
   const designSlug = slug(rootName) || 'design';
   const dir = `${resolved.root}/${designSlug}`;
   state.stack = resolved;
-  state.current = { fileKey, nodeId, version: design.version, dir, slug: designSlug };
+  state.current = { fileKey, nodeId, version: design.version, dir, slug: designSlug, name: rootName, rawBytes: design.rawBytes };
   state.written ??= {};
   await writeGenerated(projectDir, state, tokensFile(analysis.tokens, resolved, dir).rel, tokensFile(analysis.tokens, resolved, dir).content);
   await saveState(projectDir, state);
@@ -50,7 +51,7 @@ export async function figmaIndex({ url, projectDir, stack }) {
   };
 }
 
-export async function figmaChunk({ projectDir, ids }) {
+async function writeChunks({ projectDir, ids }) {
   const { state, analysis, ctx } = await current(projectDir);
   const known = new Map(analysis.chunks.map((c) => [c.id, c]));
   const unknown = (ids ?? []).filter((id) => !known.has(id));
@@ -81,7 +82,7 @@ export async function figmaChunk({ projectDir, ids }) {
   };
 }
 
-export async function figmaAssets({ projectDir, ids }) {
+async function downloadAssets({ projectDir, ids }) {
   const { state, analysis, fileKey } = await current(projectDir);
   const known = new Map(analysis.assets.map((a) => [a.id, a]));
   const unknown = (ids ?? []).filter((id) => !known.has(id));
@@ -111,3 +112,7 @@ export async function figmaAssets({ projectDir, ids }) {
   await saveState(projectDir, state);
   return { dir: state.stack.assets, total: selected.length, written, alreadyPresent: selected.length - needed.length, ...(skipped.length ? { skipped } : {}), ...(failed.length ? { failed } : {}) };
 }
+
+export const figmaIndex = (args) => tracked('figma_index', args, indexDesign);
+export const figmaChunk = (args) => tracked('figma_chunk', args, writeChunks);
+export const figmaAssets = (args) => tracked('figma_assets', args, downloadAssets);

@@ -118,6 +118,7 @@
         <div class="mod"><b>src/stack.js</b><span><code>detectStack</code>, <code>parseStack</code>, output folders.</span></div>
         <div class="mod"><b>src/emit.js</b><span>Element tree to React, Vue, Svelte, Angular, HTML, or spec.</span></div>
         <div class="mod"><b>src/project.js</b><span>State file and guarded writes.</span></div>
+        <div class="mod"><b>src/usage.js</b><span>Wraps each tool. Counts Figma calls and tokens, writes the usage report.</span></div>
       </div></div>
       <div class="layer"><b>Core</b><div class="mods">
         <div class="mod"><b>src/tree.js</b><span><code>buildTree</code>: Figma node to neutral element, tokens, assets. Used by chunk.js.</span></div>
@@ -149,7 +150,7 @@
 
   <section id="contracts">
     <h2><small>3</small>Tool contracts</h2>
-    <p class="sub">Results are short JSON. They never contain generated code or raw Figma data. Warnings are capped at 5 per chunk.</p>
+    <p class="sub">Results are short JSON. They never contain generated code or raw Figma data. Warnings are capped at 5 per chunk. Every result also ends with a <code>usage</code> block: Figma API calls and estimated tokens for that step, and totals for the design. <code>src/usage.js</code> writes the full report to <code>figma2ui/usage-report.md</code>.</p>
     <div class="grid" style="margin-top:16px">
       <div class="card"><h3><code>figma_index</code></h3><pre>in  { url, projectDir, stack? }
 out { design, stack, dir,
@@ -342,7 +343,7 @@ figma2ui/assets/         spec target assets</pre></div>
     <h2><small>12</small>Tests and open items</h2>
     <div class="grid" style="margin-top:16px">
       <div class="card"><h3>Covered</h3><ul>
-        <li>28 <code>node:test</code> cases in <code>test/figma2ui.test.js</code>, with <code>fetch</code> mocked.</li>
+        <li>30 <code>node:test</code> cases in <code>test/figma2ui.test.js</code>, with <code>fetch</code> mocked.</li>
         <li>URL parsing, flex mapping, absolute fallback, dedupe and props, chunk limit, stack detection, escaping, each emitter, path and symlink guards, edit protection, cache reuse, rate-limit errors.</li>
         <li>Generated output accepted by esbuild (React), the Vue and Svelte compilers, the Angular template parser, and Tailwind v4.</li>
         <li>Server answers <code>tools/list</code> over stdio.</li>
