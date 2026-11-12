@@ -8,8 +8,8 @@ import { esc, twClass } from '../src/emit.js';
 import { parseFigmaUrl } from '../src/figma.js';
 import { writeGenerated } from '../src/project.js';
 import { detectStack, parseStack } from '../src/stack.js';
-import { figmaAssets, figmaChunk, figmaIndex } from '../src/tools.js';
-import { auto, design, flat, landing, text } from './fixture.js';
+import { figmaAssets, figmaBuild, figmaChunk, figmaIndex } from '../src/tools.js';
+import { auto, design, flat, landing, text, vector } from './fixture.js';
 
 const temp = () => mkdtempSync(join(tmpdir(), 'figma2ui-'));
 const URL_ = 'https://www.figma.com/design/KEY123/My-File?node-id=1-2';
@@ -286,7 +286,7 @@ test('usage report counts Figma calls and tokens per step', async () => {
     '**Landing Page**, Figma file version 7',
     '| MCP tool calls | 3 |',
     '| Figma API calls | 4 (Tier 1: 2, Tier 2: 1, Tier 3: 1) |',
-    '| Design cache hits | 2 |',
+    '| Cache hits (design and assets) | 2 |',
     "| Asset downloads from Figma's CDN | 4 |",
     '| `GET /v1/files/:key/nodes` | 1 | 200 | 1 |',
   ]) assert.ok(report.includes(t), t);
@@ -300,4 +300,107 @@ test('failed steps are still counted and reported', async () => {
   const report = readFileSync(join(dir, 'figma2ui/usage-report.md'), 'utf8');
   assert.ok(report.includes('| `GET /v1/files/:key/meta` | 3 | 429 | 1 |'));
   assert.ok(report.includes('failed: Figma rate limit'));
+});
+
+test('text keeps Figma line height and does not wrap when auto-width', () => {
+  const t = { ...text('T', 'Hello'), style: { fontSize: 13, lineHeightPx: 15.73, lineHeightUnit: 'INTRINSIC_%', textAutoResize: 'WIDTH_AND_HEIGHT' } };
+  const { page } = analyze(design(auto('Root', 'VERTICAL', [t])));
+  assert.equal(page.el.children[0].css['line-height'], '15.73px');
+  assert.equal(page.el.children[0].css['white-space'], 'nowrap');
+});
+
+test('ellipse arcs become SVG ring segments', () => {
+  const arc = { id: '5:1', type: 'ELLIPSE', name: 'Enterprise', absoluteBoundingBox: { x: 0, y: 0, width: 100, height: 100 }, fills: [{ type: 'SOLID', color: { r: 0.4, g: 0.2, b: 0.8, a: 1 } }], arcData: { startingAngle: 0, endingAngle: Math.PI / 2, innerRadius: 0.5 } };
+  const { page } = analyze(design(auto('Root', 'VERTICAL', [arc])));
+  const svg = page.el.children[0];
+  assert.equal(svg.tag, 'svg');
+  assert.equal(svg.attrs.viewBox, '0 0 100 100');
+  assert.equal(svg.children[0].attrs.d, 'M100 50 A50 50 0 0 1 50 100 L50 75 A25 25 0 0 0 75 50 Z');
+  assert.ok(svg.children[0].css.fill.startsWith('var(--color-'));
+  assert.equal(svg.css['border-radius'], undefined);
+});
+
+test('plain CSS output resets browser defaults, Tailwind output does not', async () => {
+  mockFigma(landing());
+  const css = project({ react: '1' });
+  await figmaIndex({ url: URL_, projectDir: css });
+  assert.ok(readFileSync(join(css, 'src/figma/landing-page/figma-tokens.css'), 'utf8').includes(':where([class^="landing-page-"])'));
+  const tw = project({ react: '1', tailwindcss: '4' });
+  await figmaIndex({ url: URL_, projectDir: tw });
+  assert.ok(!readFileSync(join(tw, 'src/figma/landing-page/figma-tokens.css'), 'utf8').includes(':where'));
+});
+
+test('code mode builds everything in one call with one merged result', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  const out = await figmaBuild({ url: URL_, projectDir: dir });
+  assert.equal(out.page, 'src/figma/landing-page/Page.jsx');
+  const card = out.chunks.find((c) => c.name === 'Card');
+  assert.equal(card.file, 'src/figma/landing-page/Card.jsx');
+  assert.equal(card.repeat, 3);
+  assert.deepEqual(out.assets, { total: 4, written: 4 });
+  assert.equal(out.usage.figmaApiCalls, 4);
+  assert.ok(existsSync(join(dir, 'public/figma/img-aaa.png')));
+  assert.equal(JSON.stringify(out).includes('flex'), false, 'no code in the result');
+  const state = JSON.parse(readFileSync(join(dir, '.figma2ui.json'), 'utf8'));
+  assert.deepEqual(state.usage.map((e) => e.tool), ['figma_build']);
+});
+
+test('code mode keeps the generated code when assets fail', async () => {
+  mockFigma(landing());
+  const inner = globalThis.fetch;
+  globalThis.fetch = (u, o) => (String(u).includes('/v1/images/') ? Promise.resolve(new Response('{}', { status: 429, headers: { 'retry-after': '9999' } })) : inner(u, o));
+  const dir = project({ react: '1' });
+  const out = await figmaBuild({ url: URL_, projectDir: dir });
+  assert.match(out.assets.error, /rate limit/);
+  assert.ok(existsSync(join(dir, 'src/figma/landing-page/Page.jsx')));
+});
+
+test('icons are named by content, so copies share a file and moved or renamed icons keep it', () => {
+  const at = (name, x, y, extra = {}) => ({ ...vector(name), absoluteBoundingBox: { x, y, width: 24, height: 24 }, ...extra });
+  const red = { fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }] };
+  const icons = (list) => analyze(design(auto('Root', 'HORIZONTAL', list))).assets.filter((a) => a.kind === 'svg').map((a) => a.file);
+  const [first] = icons([at('Bell', 0, 0)]);
+  assert.deepEqual(icons([at('Alarm', 300, 40)]), [first]);
+  assert.equal(icons([at('A', 0, 0), at('B', 50, 0), at('C', 0, 0, red)]).length, 2);
+  assert.notEqual(icons([at('Bell', 0, 0, { fillGeometry: [{ path: 'M0 0 L1 1' }] })])[0], first);
+});
+
+test('a new file version re-renders no unchanged icons, and other projects reuse the asset cache', async () => {
+  const calls = mockFigma(landing());
+  const renders = () => calls.filter((c) => c.includes('/v1/images/')).length;
+  const dir = project({ react: '1' });
+  await figmaBuild({ url: URL_, projectDir: dir });
+  assert.equal(renders(), 1);
+  const inner = globalThis.fetch;
+  globalThis.fetch = (u, o) => (String(u).endsWith('/meta') ? Promise.resolve(new Response(JSON.stringify({ file: { version: '8' } }))) : inner(u, o));
+  await figmaBuild({ url: URL_, projectDir: dir });
+  assert.equal(renders(), 1, 'no icon re-render after a version change');
+  const other = project({ react: '1' });
+  const out = await figmaAssets({ projectDir: other }).catch(() => null);
+  assert.equal(out, null, 'figma_assets still needs figma_index first');
+  await figmaIndex({ url: URL_, projectDir: other });
+  const assets = await figmaAssets({ projectDir: other });
+  assert.equal(assets.fromCache, 4);
+  assert.equal(renders(), 1, 'second project downloads nothing');
+  assert.equal(readFileSync(join(other, 'public/figma/img-aaa.png'), 'utf8'), 'BYTES');
+});
+
+test('design downloads request vector paths', async () => {
+  const calls = mockFigma(landing());
+  await figmaIndex({ url: URL_, projectDir: project({ react: '1' }) });
+  assert.ok(calls.some((c) => c.includes('/nodes?') && c.includes('geometry=paths')));
+});
+
+test('icons saved under old node-id names are reused instead of rendered again', async () => {
+  const doc = landing();
+  const calls = mockFigma(doc);
+  const dir = project({ react: '1' });
+  const logo = doc.children[0].children[0].id.replace(/[^A-Za-z0-9]+/g, '-');
+  mkdirSync(join(dir, 'public/figma'), { recursive: true });
+  writeFileSync(join(dir, `public/figma/svg-${logo}.svg`), '<svg>old</svg>');
+  await figmaIndex({ url: URL_, projectDir: dir });
+  const out = await figmaAssets({ projectDir: dir });
+  assert.equal(out.fromCache, 1);
+  assert.equal(calls.filter((c) => c.includes('/v1/images/')).length, 0);
 });

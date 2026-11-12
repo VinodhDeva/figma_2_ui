@@ -7,6 +7,9 @@ description: Build UI from a Figma link in the project's own tech stack with min
 
 Use the `figma2ui` MCP tools. They do the conversion and keep design data out of your context.
 
+If only `figma_build` is available (code mode), call it once with the Figma link and the absolute
+path of the app. It does the work of steps 1 and 2 below. Then continue from step 3.
+
 1. Call `figma_index` with the Figma link and the absolute path of the app. Prefer a link to one
    frame. In a monorepo, use the app's folder.
    If it reports that the stack is unknown, ask the user, then call it again with `stack`.

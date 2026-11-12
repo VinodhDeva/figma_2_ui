@@ -161,6 +161,13 @@ out { page,
       chunks: [{ id, file, lines, assets,
                  warnings? }],
       skipped?, skippedReason? }</pre><p style="margin-top:8px">Side effects: writes chunk files and always rewrites the page file.</p></div>
+      <div class="card"><h3><code>figma_build</code> (code mode)</h3><pre>in  { url, projectDir, stack? }
+out { design, stack, page,
+      chunks: [{ id, name, file, repeat?,
+                 warnings? }],
+      assets: { total, written, failed? }
+            | { error },
+      skipped? }</pre><p style="margin-top:8px">Only tool when <code>FIGMA2UI_CODE_MODE=1</code>. Runs index, chunk and assets in one call. An asset error is reported, not thrown.</p></div>
       <div class="card"><h3><code>figma_assets</code></h3><pre>in  { projectDir, ids? }   // omit ids = all
 out { dir, total, written, alreadyPresent,
       skipped?, failed?: [{ id, error }] }</pre><p style="margin-top:8px">Side effects: downloads images and SVG icons. One failed asset does not stop the others.</p></div>
@@ -275,7 +282,7 @@ Asset { id, file,   // 'svg-1-23.svg'
       <tr><th>Endpoint</th><th>Used by</th><th>Tier</th><th>When</th></tr>
       <tr><td><code>GET /v1/files/:key/meta</code></td><td><code>fetchVersion</code></td><td>3</td><td>Every <code>figma_index</code>. A 403 (token lacks the scope) skips the check.</td></tr>
       <tr><td><code>GET /v1/files/:key/nodes?ids=</code></td><td><code>getDesign</code></td><td>1</td><td>Cache miss only. Without a <code>node-id</code>, <code>GET /v1/files/:key</code> and the first page.</td></tr>
-      <tr><td><code>GET /v1/images/:key?ids=&amp;format=svg</code></td><td><code>svgUrls</code></td><td>1</td><td><code>figma_assets</code>, when SVGs are missing or the file version changed. 100 ids per call.</td></tr>
+      <tr><td><code>GET /v1/images/:key?ids=&amp;format=svg</code></td><td><code>svgUrls</code></td><td>1</td><td><code>figma_assets</code>, only for icons not in the project or the shared asset cache. Icons are named by a fingerprint of their look and vector paths. 100 ids per call.</td></tr>
       <tr><td><code>GET /v1/files/:key/images</code></td><td><code>imageFillUrls</code></td><td>2</td><td><code>figma_assets</code>, when an image fill is not on disk yet.</td></tr>
       <tr><td>Presigned asset URL</td><td><code>fetchBytes</code></td><td>none</td><td>Per asset. Sent without the Figma token.</td></tr>
     </table></div>

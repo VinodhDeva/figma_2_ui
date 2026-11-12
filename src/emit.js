@@ -13,7 +13,7 @@ const TW_EXACT = {
   'align-self:stretch': 'self-stretch', 'flex-shrink:0': 'shrink-0', 'font-style:italic': 'italic', 'width:100%': 'w-full', 'height:100%': 'h-full', 'width:fit-content': 'w-fit',
   'text-align:center': 'text-center', 'text-align:right': 'text-right', 'text-align:justify': 'text-justify', 'margin:0 auto': 'mx-auto',
   'text-transform:uppercase': 'uppercase', 'text-transform:lowercase': 'lowercase', 'text-transform:capitalize': 'capitalize',
-  'text-decoration:underline': 'underline', 'text-decoration:line-through': 'line-through',
+  'text-decoration:underline': 'underline', 'white-space:nowrap': 'whitespace-nowrap', 'white-space:pre': 'whitespace-pre', 'white-space:pre-line': 'whitespace-pre-line', 'text-decoration:line-through': 'line-through',
 };
 const TW_PREFIX = {
   gap: 'gap', 'row-gap': 'gap-y', width: 'w', height: 'h', 'max-width': 'max-w', 'min-width': 'min-w', 'min-height': 'min-h', padding: 'p',
@@ -179,7 +179,12 @@ export function contextFor(analysis, stack, dir, designSlug) {
 
 export const emitChunk = (chunk, ctx) => emit(chunk, ctx);
 
-export function tokensFile(tokens, stack, dir) {
+export function tokensFile(tokens, stack, dir, designSlug) {
   const file = stack.framework === 'other' ? 'tokens.css' : 'figma-tokens.css';
-  return { rel: `${dir}/${file}`, content: `:root {\n${tokens.map((t) => `  --${t.name}: ${t.value};`).join('\n')}\n}\n` };
+  // Without Tailwind's preflight, browser defaults (text margins, button and input styles) shift absolutely
+  // positioned layers. :where() keeps this at zero specificity, so every generated rule still wins.
+  const reset = stack.styling === 'css'
+    ? `\n:where([class^="${designSlug}-"]) {\n  margin: 0;\n  padding: 0;\n  border: 0;\n  background: none;\n  font: inherit;\n  color: inherit;\n  text-align: inherit;\n  text-decoration: none;\n  box-sizing: border-box;\n}\n`
+    : '';
+  return { rel: `${dir}/${file}`, content: `:root {\n${tokens.map((t) => `  --${t.name}: ${t.value};`).join('\n')}\n}\n${reset}` };
 }

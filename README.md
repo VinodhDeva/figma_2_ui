@@ -147,6 +147,33 @@ figma2ui/usage-report.md          Figma API calls and token estimates
 Render `Page` from your app's route or entry file. A generated file is replaced only if it has
 not changed since it was generated, so your edits are kept. Delete a file to regenerate it.
 
+## Code mode (optional)
+
+By default the server exposes 3 tools, and the AI calls them one after another. In code mode, the
+server exposes a single `figma_build` tool instead. It runs the whole workflow as code inside the
+server and returns one merged summary.
+
+| | Default | Code mode |
+|---|---|---|
+| Tools the AI sees | 3 | 1 (`figma_build`) |
+| Tool definitions sent on every AI turn | about 340 tokens | about 130 tokens |
+| Tool calls per design | 3 | 1 |
+| Re-run only some chunks or assets | yes, with `ids` | no, rebuilds everything |
+
+To turn it on, add `FIGMA2UI_CODE_MODE` to the server's `env`, next to the token:
+
+```json
+"env": { "FIGMA_TOKEN": "your_token", "FIGMA2UI_CODE_MODE": "1" }
+```
+
+For Claude Code, add `-e FIGMA2UI_CODE_MODE=1` to the `claude mcp add` command. Restart the server
+in your AI tool after changing it.
+
+If an asset download fails in code mode, for example because of a rate limit, the generated code
+is kept and the result reports the error under `assets`.
+
+AI tools that have their own Code Mode, such as Cloudflare Agents, work with either setting.
+
 ## Usage report
 
 Every tool result ends with a short `usage` block: Figma API calls in that step, estimated
@@ -171,8 +198,10 @@ Figma limits REST API calls by seat type, and the limit follows the plan of the 
 | Dev or Full, on a paid plan | Per-minute limits, which are ample for this tool |
 | View or Collab | A small monthly quota, up to 20 and sometimes far fewer |
 
-Each new design version uses 1 limited call, plus 1 more for `figma_assets` if the design has
-icons. Unchanged designs use the cache.
+Each new design version uses 1 limited call. Icons cost 1 more, and only when the design has icons
+that have never been downloaded before. Icons are named by a fingerprint of how they look, so
+moved, renamed, or copied icons are reused, and a shared cache in `~/.cache/figma2ui/assets`
+serves them to every project on your machine.
 
 For regular use, a Professional plan with a Dev seat is enough. Choose a Full seat if you also
 edit designs. Keep the file in the paid team, and create the token from the account holding that
@@ -215,7 +244,7 @@ npm test
 | Path | Purpose |
 |------|---------|
 | `src/server.js` | MCP wiring |
-| `src/tools.js` | The 3 tools |
+| `src/tools.js` | The 3 tools, and `figma_build` for code mode |
 | `src/figma.js` | Figma API client and cache |
 | `src/tree.js` | Converts Figma nodes to a neutral element tree |
 | `src/chunk.js` | Deduplication and chunking |

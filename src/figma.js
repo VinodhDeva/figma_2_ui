@@ -67,7 +67,8 @@ export async function fetchVersion(fileKey) {
 }
 
 async function download(fileKey, nodeId) {
-  const path = nodeId ? `/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(nodeId)}` : `/v1/files/${fileKey}`;
+  // Vector paths make icon fingerprints exact, so only icons that really changed are rendered again.
+  const path = nodeId ? `/v1/files/${fileKey}/nodes?ids=${encodeURIComponent(nodeId)}&geometry=paths` : `/v1/files/${fileKey}?geometry=paths`;
   const text = await (await api(path)).text();
   const raw = JSON.parse(text);
   const entry = nodeId ? raw.nodes?.[nodeId] : { document: raw.document?.children?.[0], styles: raw.styles };
@@ -93,6 +94,24 @@ export async function getDesign(fileKey, nodeId, version) {
   await writeFile(`${file}.tmp`, JSON.stringify(design), { mode: 0o600 });
   await rename(`${file}.tmp`, file);
   return design;
+}
+
+// Shared across projects. Asset names come from their content, so a cached file is always current.
+const assetFile = (file) => join(cacheDir(), 'assets', file);
+
+export async function readCachedAsset(file) {
+  try {
+    const bytes = await readFile(assetFile(file));
+    apiLog.push({ call: 'asset cache', tier: null, status: 'hit' });
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+export async function cacheAsset(file, bytes) {
+  await mkdir(join(cacheDir(), 'assets'), { recursive: true, mode: 0o700 });
+  await writeFile(assetFile(file), bytes, { mode: 0o600 });
 }
 
 export async function svgUrls(fileKey, nodeIds) {

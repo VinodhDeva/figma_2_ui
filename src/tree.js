@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { slug, uniqueNamer } from './names.js';
 
 const VECTOR = new Set(['VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'LINE', 'REGULAR_POLYGON']);
@@ -50,12 +51,60 @@ function paintValue(paint, styleName, ctx, el) {
   return gradient(paint);
 }
 
-function addAsset(ctx, kind, source) {
-  const safe = source.replace(/[^A-Za-z0-9]+/g, '-');
+// Fields that move or rename a layer without changing how it looks.
+const VOLATILE = new Set(['id', 'name', 'absoluteBoundingBox', 'absoluteRenderBounds', 'transitionNodeID']);
+
+// Fingerprint of how an icon looks, including its vector paths, so a moved, renamed or copied icon
+// keeps the same file name and is never rendered by Figma twice.
+function lookKey(node) {
+  const { relativeTransform, constraints, layoutAlign, layoutGrow, layoutPositioning, layoutSizingHorizontal, layoutSizingVertical, ...look } = node;
+  const { width, height } = box(node);
+  const json = JSON.stringify(look, (k, v) => (VOLATILE.has(k) ? undefined : v));
+  return createHash('sha1').update(`${round(width)}x${round(height)}:${json}`).digest('hex').slice(0, 16);
+}
+
+function addAsset(ctx, kind, source, key = source) {
+  const safe = key.replace(/[^A-Za-z0-9]+/g, '-');
   // shortcut: image fills are always named .png even if Figma stores JPEG; browsers sniff the type, add content-type lookup if a stack needs true extensions.
   const file = kind === 'svg' ? `svg-${safe}.svg` : `img-${safe}.png`;
-  ctx.assets.set(file, { id: file, kind, source, file });
+  if (!ctx.assets.has(file)) ctx.assets.set(file, { id: file, kind, source, file });
   return { file, src: `/figma/${file}` };
+}
+
+const TAU = Math.PI * 2;
+const isArc = (a) => !!a && (a.innerRadius > 0 || Math.abs(a.endingAngle - a.startingAngle) < TAU - 0.001);
+
+// SVG path for a Figma ellipse arc or ring. Angles are radians, clockwise from 3 o'clock.
+export function arcPath(w, h, { startingAngle: a0, endingAngle, innerRadius: r = 0 }) {
+  let sweep = endingAngle - a0;
+  if (sweep <= 0) sweep += TAU;
+  const [cx, cy] = [w / 2, h / 2];
+  const pt = (k, a) => `${round(cx + cx * k * Math.cos(a))} ${round(cy + cy * k * Math.sin(a))}`;
+  const radii = (k) => `${round(cx * k)} ${round(cy * k)}`;
+  if (sweep >= TAU - 0.001) {
+    // A full ring is two circles; the evenodd fill rule cuts out the inner one.
+    const circle = (k) => `M${pt(k, 0)} A${radii(k)} 0 1 1 ${pt(k, Math.PI)} A${radii(k)} 0 1 1 ${pt(k, 0)} Z`;
+    return r > 0 ? `${circle(1)} ${circle(r)}` : circle(1);
+  }
+  const a1 = a0 + sweep;
+  const large = sweep > Math.PI ? 1 : 0;
+  const back = r > 0 ? `L${pt(r, a1)} A${radii(r)} 0 ${large} 0 ${pt(r, a0)}` : `L${round(cx)} ${round(cy)}`;
+  return `M${pt(1, a0)} A${radii(1)} 0 ${large} 1 ${pt(1, a1)} ${back} Z`;
+}
+
+function arcEl(node, el, ctx) {
+  const { width, height } = box(node);
+  delete el.css['border-radius'];
+  delete el.css.border;
+  delete el.css['box-sizing'];
+  el.tag = 'svg';
+  el.attrs = { viewBox: `0 0 ${round(width)} ${round(height)}` };
+  const path = { tag: 'path', name: node.name, css: { 'fill-rule': 'evenodd' }, children: [], warn: [], attrs: { d: arcPath(width, height, node.arcData) } };
+  const paint = visiblePaints(node.fills).at(-1);
+  if (paint?.type === 'SOLID') path.css.fill = paintValue(paint, ctx.styles[node.styles?.fill]?.name, ctx, el);
+  else if (paint) el.warn.push('arc fill approximated with a solid color');
+  el.children = [path];
+  return el;
 }
 
 function hasGenericName(name) {
@@ -167,7 +216,8 @@ function textEl(node, parent, el, ctx) {
   if (s.fontFamily) css['font-family'] = ctx.tokens.add('font', `"${s.fontFamily.replace(/["\\;{}<>\n]/g, '')}", sans-serif`);
   if (s.fontSize) css['font-size'] = ctx.tokens.add('size', px(s.fontSize), styleName);
   if (s.fontWeight) css['font-weight'] = String(s.fontWeight);
-  if (s.lineHeightPx && s.lineHeightUnit !== 'INTRINSIC_%') css['line-height'] = px(s.lineHeightPx);
+  // Figma's auto line height still reports the px height it renders with, so it is used too.
+  if (s.lineHeightPx) css['line-height'] = px(s.lineHeightPx);
   if (s.letterSpacing) css['letter-spacing'] = px(s.letterSpacing);
   if (s.textAlignHorizontal && s.textAlignHorizontal !== 'LEFT') css['text-align'] = s.textAlignHorizontal === 'JUSTIFIED' ? 'justify' : s.textAlignHorizontal.toLowerCase();
   if (s.italic) css['font-style'] = 'italic';
@@ -176,7 +226,9 @@ function textEl(node, parent, el, ctx) {
   if (s.textCase === 'TITLE') css['text-transform'] = 'capitalize';
   if (s.textDecoration === 'UNDERLINE') css['text-decoration'] = 'underline';
   if (s.textDecoration === 'STRIKETHROUGH') css['text-decoration'] = 'line-through';
-  if (el.text.includes('\n')) css['white-space'] = 'pre-line';
+  // Auto-width text never wraps in Figma, so it must not wrap near a container edge either.
+  if (s.textAutoResize === 'WIDTH_AND_HEIGHT') css['white-space'] = el.text.includes('\n') ? 'pre' : 'nowrap';
+  else if (el.text.includes('\n')) css['white-space'] = 'pre-line';
   const paint = visiblePaints(node.fills).at(-1);
   if (paint?.type === 'SOLID') css.color = paintValue(paint, ctx.styles[node.styles?.fill]?.name, ctx, el);
   if (node.characterStyleOverrides?.some(Boolean)) el.warn.push('mixed text styles flattened');
@@ -237,7 +289,8 @@ function buildNode(node, parent, ctx) {
   place(node, parent, el.css);
   decorate(node, el, ctx);
   if (node.type === 'CODE_INSTANCE') el.warn.push('Figma Make code layer has no design data, left empty');
-  if (node.type !== 'TEXT' && isVectorAsset(node)) return imageEl(el, node, addAsset(ctx, 'svg', node.id));
+  if (node.type === 'ELLIPSE' && isArc(node.arcData)) return arcEl(node, el, ctx);
+  if (node.type !== 'TEXT' && isVectorAsset(node)) return imageEl(el, node, addAsset(ctx, 'svg', node.id, lookKey(node)));
   if (node.type === 'TEXT') return textEl(node, parent, el, ctx);
 
   const paints = visiblePaints(node.fills);

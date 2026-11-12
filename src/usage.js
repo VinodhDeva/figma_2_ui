@@ -61,7 +61,7 @@ function render(state, key) {
     '|---|---|',
     `| MCP tool calls | ${t.toolCalls} |`,
     `| Figma API calls | ${t.figmaApiCalls} (Tier 1: ${t.tier1}, Tier 2: ${t.tier2}, Tier 3: ${t.tier3}) |`,
-    `| Design cache hits | ${t.cacheHits} |`,
+    `| Cache hits (design and assets) | ${t.cacheHits} |`,
     `| Asset downloads from Figma's CDN | ${t.downloads} |`,
     `| AI tokens spent on MCP inputs and results | ~${num(t.tokens)} |`,
     ...(cur?.rawBytes ? [`| Design data kept out of the AI | ~${num(Math.ceil(cur.rawBytes / 4))} tokens |`] : []),

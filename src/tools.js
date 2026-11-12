@@ -1,6 +1,8 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { analyze } from './chunk.js';
 import { contextFor, emitChunk, tokensFile } from './emit.js';
-import { fetchBytes, fetchVersion, getDesign, imageFillUrls, parseFigmaUrl, svgUrls } from './figma.js';
+import { cacheAsset, fetchBytes, fetchVersion, getDesign, imageFillUrls, parseFigmaUrl, readCachedAsset, svgUrls } from './figma.js';
 import { slug } from './names.js';
 import { fileExists, loadState, requireProject, saveState, writeGenerated } from './project.js';
 import { detectStack, parseStack } from './stack.js';
@@ -39,7 +41,8 @@ async function indexDesign({ url, projectDir, stack }) {
   state.stack = resolved;
   state.current = { fileKey, nodeId, version: design.version, dir, slug: designSlug, name: rootName, rawBytes: design.rawBytes };
   state.written ??= {};
-  await writeGenerated(projectDir, state, tokensFile(analysis.tokens, resolved, dir).rel, tokensFile(analysis.tokens, resolved, dir).content);
+  const tokens = tokensFile(analysis.tokens, resolved, dir, designSlug);
+  await writeGenerated(projectDir, state, tokens.rel, tokens.content);
   await saveState(projectDir, state);
   return {
     design: rootName,
@@ -73,7 +76,7 @@ async function writeChunks({ projectDir, ids }) {
     results.push(out);
   }
   const pageFiles = emitChunk(analysis.page, ctx);
-  await writeAll(pageFiles);
+  await writeAll([...pageFiles, tokensFile(analysis.tokens, ctx.stack, ctx.dir, ctx.slug)]);
   await saveState(projectDir, state);
   return {
     page: pageFiles[0].rel,
@@ -89,30 +92,80 @@ async function downloadAssets({ projectDir, ids }) {
   if (unknown.length) throw new Error(`Unknown asset ids: ${unknown.join(', ')}.`);
   const selected = ids?.length ? ids.map((id) => known.get(id)) : analysis.assets;
   const relOf = (a) => `${state.stack.assets}/${a.file}`;
-  // Image fills are named by content hash, so an existing file is always current. SVGs change with the file version.
-  const { version } = state.current;
-  const needed = selected.filter((a) => !fileExists(projectDir, relOf(a)) || (a.kind === 'svg' && state.assetsVersion !== version));
+  // Images are named by Figma's content hash and icons by a fingerprint of their look, so an existing file is always current.
+  const missing = selected.filter((a) => !fileExists(projectDir, relOf(a)));
+  const cached = [];
+  const needed = [];
+  // One-time migration: icons used to be named by node id. Reusing those files spares a render call.
+  const legacy = (a) => `${state.stack.assets}/svg-${a.source.replace(/[^A-Za-z0-9]+/g, '-')}.svg`;
+  for (const a of missing) {
+    let bytes = await readCachedAsset(a.file);
+    if (!bytes && a.kind === 'svg' && fileExists(projectDir, legacy(a))) bytes = await readFile(resolve(projectDir, legacy(a)));
+    if (bytes) cached.push([a, bytes]);
+    else needed.push(a);
+  }
   const svgIds = needed.filter((a) => a.kind === 'svg').map((a) => a.source);
   const svg = svgIds.length ? await svgUrls(fileKey, svgIds) : {};
   const images = needed.some((a) => a.kind === 'image') ? await imageFillUrls(fileKey) : {};
   const failed = [];
   const skipped = [];
   let written = 0;
+  const save = async (a, bytes) => {
+    const r = await writeGenerated(projectDir, state, relOf(a), bytes);
+    if (r.skipped) skipped.push(a.id);
+    else written += 1;
+  };
+  for (const [a, bytes] of cached) await save(a, bytes);
   for (const a of needed) {
     try {
       const bytes = await fetchBytes(a.kind === 'svg' ? svg[a.source] : images[a.source]);
-      const r = await writeGenerated(projectDir, state, relOf(a), bytes);
-      if (r.skipped) skipped.push(a.id);
-      else written += 1;
+      await cacheAsset(a.file, bytes);
+      await save(a, bytes);
     } catch (e) {
       failed.push({ id: a.id, error: e.message });
     }
   }
-  if (!failed.length) state.assetsVersion = version;
   await saveState(projectDir, state);
-  return { dir: state.stack.assets, total: selected.length, written, alreadyPresent: selected.length - needed.length, ...(skipped.length ? { skipped } : {}), ...(failed.length ? { failed } : {}) };
+  return {
+    dir: state.stack.assets,
+    total: selected.length,
+    written,
+    alreadyPresent: selected.length - missing.length,
+    ...(cached.length ? { fromCache: cached.length } : {}),
+    ...(skipped.length ? { skipped } : {}),
+    ...(failed.length ? { failed } : {}),
+  };
 }
 
 export const figmaIndex = (args) => tracked('figma_index', args, indexDesign);
 export const figmaChunk = (args) => tracked('figma_chunk', args, writeChunks);
 export const figmaAssets = (args) => tracked('figma_assets', args, downloadAssets);
+
+// Code mode: the whole index, chunk and assets workflow runs here as code, so the AI makes one call
+// and reads one merged summary instead of three results.
+async function build({ url, projectDir, stack }) {
+  const index = await indexDesign({ url, projectDir, stack });
+  const written = await writeChunks({ projectDir });
+  let assets;
+  try {
+    const a = await downloadAssets({ projectDir });
+    assets = { total: a.total, written: a.written, ...(a.failed ? { failed: a.failed.length } : {}) };
+  } catch (e) {
+    // The code is already on disk, so an asset problem (such as a rate limit) is reported, not thrown.
+    assets = { error: e.message };
+  }
+  const files = new Map(written.chunks.map((c) => [c.id, c]));
+  return {
+    design: index.design,
+    stack: index.stack,
+    page: written.page,
+    chunks: index.chunks.map(({ id, name, repeat }) => {
+      const { file, warnings } = files.get(id);
+      return { id, name, file, ...(repeat ? { repeat } : {}), ...(warnings ? { warnings } : {}) };
+    }),
+    assets,
+    ...(written.skipped ? { skipped: written.skipped, skippedReason: written.skippedReason } : {}),
+  };
+}
+
+export const figmaBuild = (args) => tracked('figma_build', args, build);
