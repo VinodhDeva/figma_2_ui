@@ -6,7 +6,7 @@ import { cacheAsset, fetchBytes, fetchVersion, getDesign, imageFillUrls, parseFi
 import { slug } from './names.js';
 import { fileExists, loadState, requireProject, saveState, writeGenerated } from './project.js';
 import { detectStack, parseStack } from './stack.js';
-import { libraryStatus, uiLibrary } from './library.js';
+import { libraryStatus, requireUiLibrary, uiLibrary } from './library.js';
 import { tracked } from './usage.js';
 
 const MAX_WARNINGS = 5;
@@ -36,6 +36,9 @@ async function indexDesign({ url, projectDir, stack }) {
   if (!resolved) {
     throw new Error('Could not detect the tech stack. Ask the user for it, then call figma_index again with stack, for example "react+tailwind", "vue", or "flutter".');
   }
+  // Guard: fail fast before consuming any Figma API quota when the configured
+  // UI library is not installed. framework may be null until stack is resolved.
+  requireUiLibrary(projectDir, resolved.framework);
   const version = await fetchVersion(fileKey);
   const design = await getDesign(fileKey, nodeId, version);
   const analysis = analyze(design, resolved.assetUrl);
@@ -62,6 +65,8 @@ async function indexDesign({ url, projectDir, stack }) {
 
 async function writeChunks({ projectDir, ids }) {
   const { state, analysis, ctx } = await current(projectDir);
+  // Guard: fail fast if the library was set after indexing but isn't installed yet.
+  requireUiLibrary(projectDir, state.stack?.framework);
   const known = new Map(analysis.chunks.map((c) => [c.id, c]));
   const unknown = (ids ?? []).filter((id) => !known.has(id));
   if (unknown.length) throw new Error(`Unknown chunk ids: ${unknown.join(', ')}. Call figma_index for the current list.`);

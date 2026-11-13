@@ -450,30 +450,55 @@ test('configured UI library components replace plain buttons when installed', ()
   assert.ok(header.includes('<Button className=') && !header.includes('<button'));
 }));
 
-test('missing UI library falls back to plain elements and suggests the install command', () => withLibrary('mui', async () => {
-  mockFigma(landing());
+test('missing UI library fails fast before hitting the Figma API — no quota consumed', () => withLibrary('mui', async () => {
+  const calls = mockFigma(landing());
   const dir = project({ react: '1' });
   writeFileSync(join(dir, 'yarn.lock'), '');
-  fakeInstall(dir, '@mui/material');
-  const index = await figmaIndex({ url: URL_, projectDir: dir });
-  assert.equal(index.uiLibrary.used, false);
-  assert.equal(index.uiLibrary.install, 'yarn add @emotion/react @emotion/styled');
-  const out = await figmaChunk({ projectDir: dir });
-  assert.equal(out.uiLibrary.install, 'yarn add @emotion/react @emotion/styled');
-  assert.ok(readFileSync(join(dir, 'src/figma/landing-page/Header.jsx'), 'utf8').includes('<button'));
+  fakeInstall(dir, '@mui/material'); // only one of three peers installed
+  const apiBefore = calls.length;
+  await assert.rejects(
+    figmaIndex({ url: URL_, projectDir: dir }),
+    /FIGMA2UI_UI_LIBRARY="mui" is set but @emotion\/react, @emotion\/styled are not installed/
+  );
+  assert.equal(calls.length, apiBefore, 'no Figma API call was made');
 }));
 
-test('UI library is skipped with a note for unknown names and non-React stacks', async () => {
+test('missing UI library also blocks figma_chunk — no files written', () => withLibrary('mui', async () => {
   mockFigma(landing());
-  await withLibrary('bootstrap', async () => {
-    const index = await figmaIndex({ url: URL_, projectDir: project({ react: '1' }) });
-    assert.match(index.uiLibrary.note, /Use one of: mui, antd, chakra, mantine/);
-  });
-  await withLibrary('antd', async () => {
-    const index = await figmaIndex({ url: URL_, projectDir: project({ vue: '3' }) });
-    assert.match(index.uiLibrary.note, /React projects only/);
-  });
-});
+  const dir = project({ react: '1' });
+  // Index succeeds when library is not yet set, then we set it for chunk.
+  delete process.env.FIGMA2UI_UI_LIBRARY;
+  await figmaIndex({ url: URL_, projectDir: dir });
+  process.env.FIGMA2UI_UI_LIBRARY = 'mui'; // set after index, packages still missing
+  await assert.rejects(
+    figmaChunk({ projectDir: dir }),
+    /FIGMA2UI_UI_LIBRARY="mui" is set but @mui\/material, @emotion\/react, @emotion\/styled are not installed/
+  );
+  // No chunk files should exist yet
+  assert.ok(!existsSync(join(dir, 'src/figma/landing-page/Header.jsx')));
+}));
+
+test('unsupported UI library name fails fast with actionable message', () => withLibrary('bootstrap', async () => {
+  mockFigma(landing());
+  const calls = mockFigma(landing());
+  const apiBefore = calls.length;
+  await assert.rejects(
+    figmaIndex({ url: URL_, projectDir: project({ react: '1' }) }),
+    /not a supported library.*mui, antd, chakra, mantine/
+  );
+  assert.equal(calls.length, apiBefore, 'no Figma API call was made');
+}));
+
+test('UI library on a non-React stack fails fast with actionable message', () => withLibrary('antd', async () => {
+  mockFigma(landing());
+  const calls = mockFigma(landing());
+  const apiBefore = calls.length;
+  await assert.rejects(
+    figmaIndex({ url: URL_, projectDir: project({ vue: '3' }) }),
+    /only works with React projects.*vue/
+  );
+  assert.equal(calls.length, apiBefore, 'no Figma API call was made');
+}));
 
 test('library components are aliased when a chunk has the same name', () => withLibrary('chakra', async () => {
   const btn = (t) => auto('Button', 'HORIZONTAL', [text('Label', t), text('Hint', `${t}!`)]);

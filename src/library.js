@@ -39,5 +39,36 @@ export function uiLibrary(projectDir, framework) {
   return { name, used: true, pkg: lib.pkg, components: lib.components };
 }
 
+/**
+ * Throws an actionable error when FIGMA2UI_UI_LIBRARY is set but the packages
+ * are not installed. Called before any Figma API request so no quota is consumed.
+ */
+export function requireUiLibrary(projectDir, framework) {
+  const raw = process.env.FIGMA2UI_UI_LIBRARY?.trim().toLowerCase();
+  if (!raw) return; // env var not set → nothing to enforce
+  const name = ALIASES[raw] ?? raw;
+  const lib = LIBRARIES[name];
+  if (!lib) {
+    throw new Error(
+      `FIGMA2UI_UI_LIBRARY="${raw}" is not a supported library. ` +
+      `Supported values: ${Object.keys(LIBRARIES).join(', ')}. ` +
+      `Fix the value in your MCP config env, then try again.`
+    );
+  }
+  if (framework && framework !== 'react') {
+    throw new Error(
+      `FIGMA2UI_UI_LIBRARY="${raw}" only works with React projects, but this project uses ${framework}. ` +
+      `Remove FIGMA2UI_UI_LIBRARY from your MCP config env, or switch to a React project.`
+    );
+  }
+  const missing = [lib.pkg, ...lib.peers].filter((p) => !installed(projectDir, p));
+  if (missing.length) {
+    throw new Error(
+      `FIGMA2UI_UI_LIBRARY="${raw}" is set but ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not installed in ${projectDir}. ` +
+      `Run: ${installCommand(projectDir, missing)} — then try again.`
+    );
+  }
+}
+
 // The part of the library status the AI needs to see.
 export const libraryStatus = ({ pkg, components, ...rest }) => rest;
