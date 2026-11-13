@@ -423,3 +423,66 @@ test('results list the fonts and weights the app must load', async () => {
   const index = await figmaIndex({ url: URL_, projectDir: project({ react: '1' }) });
   assert.deepEqual(index.fonts, ['Inter:400']);
 });
+
+const withLibrary = async (name, fn) => {
+  process.env.FIGMA2UI_UI_LIBRARY = name;
+  try {
+    return await fn();
+  } finally {
+    delete process.env.FIGMA2UI_UI_LIBRARY;
+  }
+};
+const fakeInstall = (dir, ...pkgs) => pkgs.forEach((p) => {
+  mkdirSync(join(dir, 'node_modules', p), { recursive: true });
+  writeFileSync(join(dir, 'node_modules', p, 'package.json'), '{}');
+});
+
+test('configured UI library components replace plain buttons when installed', () => withLibrary('mui', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  fakeInstall(dir, '@mui/material', '@emotion/react', '@emotion/styled');
+  const index = await figmaIndex({ url: URL_, projectDir: dir });
+  assert.deepEqual(index.uiLibrary, { name: 'mui', used: true });
+  const out = await figmaChunk({ projectDir: dir });
+  assert.equal(out.uiLibrary, undefined);
+  const header = readFileSync(join(dir, 'src/figma/landing-page/Header.jsx'), 'utf8');
+  assert.ok(header.startsWith("import { Button } from '@mui/material';"), header);
+  assert.ok(header.includes('<Button className=') && !header.includes('<button'));
+}));
+
+test('missing UI library falls back to plain elements and suggests the install command', () => withLibrary('mui', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  writeFileSync(join(dir, 'yarn.lock'), '');
+  fakeInstall(dir, '@mui/material');
+  const index = await figmaIndex({ url: URL_, projectDir: dir });
+  assert.equal(index.uiLibrary.used, false);
+  assert.equal(index.uiLibrary.install, 'yarn add @emotion/react @emotion/styled');
+  const out = await figmaChunk({ projectDir: dir });
+  assert.equal(out.uiLibrary.install, 'yarn add @emotion/react @emotion/styled');
+  assert.ok(readFileSync(join(dir, 'src/figma/landing-page/Header.jsx'), 'utf8').includes('<button'));
+}));
+
+test('UI library is skipped with a note for unknown names and non-React stacks', async () => {
+  mockFigma(landing());
+  await withLibrary('bootstrap', async () => {
+    const index = await figmaIndex({ url: URL_, projectDir: project({ react: '1' }) });
+    assert.match(index.uiLibrary.note, /Use one of: mui, antd, chakra, mantine/);
+  });
+  await withLibrary('antd', async () => {
+    const index = await figmaIndex({ url: URL_, projectDir: project({ vue: '3' }) });
+    assert.match(index.uiLibrary.note, /React projects only/);
+  });
+});
+
+test('library components are aliased when a chunk has the same name', () => withLibrary('chakra', async () => {
+  const btn = (t) => auto('Button', 'HORIZONTAL', [text('Label', t), text('Hint', `${t}!`)]);
+  mockFigma(auto('Toolbar', 'HORIZONTAL', [btn('Save'), btn('Cancel')]));
+  const dir = project({ react: '1' });
+  fakeInstall(dir, '@chakra-ui/react', '@emotion/react');
+  await figmaIndex({ url: URL_, projectDir: dir });
+  await figmaChunk({ projectDir: dir });
+  const file = readFileSync(join(dir, 'src/figma/toolbar/Button.jsx'), 'utf8');
+  assert.ok(file.includes("import { Button as UiButton } from '@chakra-ui/react';"), file);
+  assert.ok(file.includes('export function Button(') && file.includes('<UiButton className='));
+}));

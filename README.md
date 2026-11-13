@@ -123,6 +123,42 @@ If an asset download fails in code mode, for example on a rate limit, the genera
 and the error is reported under `assets`. Rebuilding everything is cheap, because unchanged
 designs, images, and icons come from the cache.
 
+## UI component library (optional)
+
+React projects can use a component library for the interactive parts of a design. Layers whose
+names say button, input, or link become that library's components instead of plain HTML
+elements. Everything else stays as generated layout code.
+
+| Value | Package | Button | Input | Link |
+|-------|---------|--------|-------|------|
+| `mui` | `@mui/material` | `Button` | `InputBase` | `Link` |
+| `antd` | `antd` | `Button` | `Input` | plain `a` |
+| `chakra` | `@chakra-ui/react` | `Button` | `Input` | `Link` |
+| `mantine` | `@mantine/core` | `Button` | `TextInput` | `Anchor` |
+
+Turn it on by adding `FIGMA2UI_UI_LIBRARY` to the server's `env`, then restart the server:
+
+```json
+"env": { "FIGMA_TOKEN": "your_token", "FIGMA2UI_UI_LIBRARY": "mui" }
+```
+
+The library must be installed in your project, including its required peer packages. The server
+checks `node_modules` in the project folder and its parent folders, so monorepo installs count.
+
+- **Installed:** components are imported, for example `import { Button } from '@mui/material';`.
+- **Not installed:** plain elements are generated, so the code still runs, and the result shows
+  the install command for your package manager, for example
+  `npm install @mui/material @emotion/react @emotion/styled`. Install it, then run `figma_chunk`
+  again.
+- **Unknown value or a non-React project:** plain elements are generated, and the result explains
+  why.
+
+Your app still needs the library's own setup, such as `MantineProvider` or Chakra's `Provider`.
+
+Library components bring their own default styles, which can override the Figma styles on those
+elements. For MUI, wrap the app in `<StyledEngineProvider injectFirst>` so the generated styles
+win.
+
 ## Supported stacks
 
 The stack is detected from your project files and saved in `.figma2ui.json`.
@@ -239,6 +275,7 @@ edit designs. Keep the file in the paid team. See
 |----------------------|---------|
 | `FIGMA_TOKEN` | Required. Figma personal access token |
 | `FIGMA2UI_CODE_MODE` | Set to `1` for the single `figma_build` tool |
+| `FIGMA2UI_UI_LIBRARY` | `mui`, `antd`, `chakra`, or `mantine`. See [UI component library](#ui-component-library-optional) |
 | `FIGMA2UI_CACHE` | Cache folder. Default `~/.cache/figma2ui` |
 
 ## Limitations
@@ -246,7 +283,7 @@ edit designs. Keep the file in the paid team. See
 - Figma Make files and Make code layers cannot be converted, because they have no design layers.
 - Interactions, animation, and state logic are left to the AI.
 - Breakpoint-specific layouts are not generated. Only auto-layout fill and hug carry over.
-- Existing project components are not reused.
+- Existing project components are not reused. Only buttons, inputs, and links can use a UI library.
 - Rotation, blend modes, mixed styles inside one text, and angular gradients are approximated or
   ignored, and are listed in `warnings`.
 
@@ -297,6 +334,7 @@ To run a local checkout in your AI tool, use `"command": "node"` with
 | `src/emit.js` | Code and blueprint output for each target |
 | `src/project.js` | Guarded file writes |
 | `src/usage.js` | Usage tracking and report |
+| `src/library.js` | UI component library config and install check |
 | `docs/system-design.html` | Animated overview for stakeholders |
 | `docs/low-level-design.html` | Detailed design for engineers |
 

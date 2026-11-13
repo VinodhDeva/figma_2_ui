@@ -48,6 +48,16 @@ function classFor(el, c) {
   return name;
 }
 
+// Swaps a button, input or link for the configured UI library's component and records the import.
+function libraryTag(tag, c) {
+  const comp = c.lib?.components[tag];
+  if (!comp) return tag;
+  // Aliased when it would clash with this chunk's own name or a chunk it renders.
+  const local = c.taken.has(comp) ? `Ui${comp}` : comp;
+  c.used.set(comp, local);
+  return local;
+}
+
 function render(el, ind, c) {
   const pad = '  '.repeat(ind);
   const syn = SYNTAX[c.stack.framework];
@@ -65,15 +75,16 @@ function render(el, ind, c) {
     else if (prop && syn.bind) attrs.push(syn.bind(k, prop));
     else attrs.push(`${k}="${esc(v)}"`);
   }
-  const open = `<${el.tag}${attrs.map((a) => ` ${a}`).join('')}`;
+  const tag = libraryTag(el.tag, c);
+  const open = `<${tag}${attrs.map((a) => ` ${a}`).join('')}`;
   if (VOID.has(el.tag)) return `${pad}${open} />`;
   if (el.text !== undefined) {
     const prop = el.props?.text;
     const body = prop && c.values ? esc(c.values[prop]) : prop && syn.show ? syn.show(prop) : esc(el.text);
-    return `${pad}${open}>${body}</${el.tag}>`;
+    return `${pad}${open}>${body}</${tag}>`;
   }
-  if (!el.children.length) return `${pad}${open}></${el.tag}>`;
-  return [`${pad}${open}>`, ...el.children.map((ch) => render(ch, ind + 1, c)), `${pad}</${el.tag}>`].join('\n');
+  if (!el.children.length) return `${pad}${open}></${tag}>`;
+  return [`${pad}${open}>`, ...el.children.map((ch) => render(ch, ind + 1, c)), `${pad}</${tag}>`].join('\n');
 }
 
 function refsIn(el, byId, out = new Set()) {
@@ -94,7 +105,8 @@ function wrap(chunk, body, c, css) {
   if (stack.framework === 'react') {
     const ts = stack.ext === 'tsx' && props.length ? `: { ${props.map((p) => `${p}?: string`).join('; ')} }` : '';
     const sig = props.length ? `{ ${props.join(', ')} }${ts}` : '';
-    const head = [...refs.map((r) => `import { ${r} } from './${r}';`), ...styles.map((s) => `import './${s}';`)].join('\n');
+    const lib = c.used.size ? [`import { ${[...c.used].sort().map(([n, l]) => (n === l ? n : `${n} as ${l}`)).join(', ')} } from '${c.lib.pkg}';`] : [];
+    const head = [...lib, ...refs.map((r) => `import { ${r} } from './${r}';`), ...styles.map((s) => `import './${s}';`)].join('\n');
     return `${head ? `${head}\n\n` : ''}export function ${name}(${sig}) {\n  return (\n${body}\n  );\n}\n`;
   }
   if (stack.framework === 'vue') {
@@ -159,7 +171,7 @@ function specFile(chunk, c) {
 }
 
 function emit(chunk, ctx) {
-  const c = { ...ctx, style: { n: 0, rules: [] }, prefix: `${ctx.slug}-${slug(chunk.name)}`, values: null };
+  const c = { ...ctx, style: { n: 0, rules: [] }, prefix: `${ctx.slug}-${slug(chunk.name)}`, values: null, used: new Map(), taken: new Set([chunk.name, ...refsIn(chunk.el, ctx.byId)]) };
   const { stack, dir } = ctx;
   if (stack.framework === 'other') {
     const file = chunk.id === 'page' ? 'index.md' : `${chunk.name}.md`;
@@ -173,8 +185,8 @@ function emit(chunk, ctx) {
   return files;
 }
 
-export function contextFor(analysis, stack, dir, designSlug) {
-  return { stack, dir, slug: designSlug, byId: new Map(analysis.chunks.map((ch) => [ch.id, ch])) };
+export function contextFor(analysis, stack, dir, designSlug, library = null) {
+  return { stack, dir, slug: designSlug, byId: new Map(analysis.chunks.map((ch) => [ch.id, ch])), lib: library?.used ? library : null, library };
 }
 
 export const emitChunk = (chunk, ctx) => emit(chunk, ctx);

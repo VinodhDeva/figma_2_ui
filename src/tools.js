@@ -6,6 +6,7 @@ import { cacheAsset, fetchBytes, fetchVersion, getDesign, imageFillUrls, parseFi
 import { slug } from './names.js';
 import { fileExists, loadState, requireProject, saveState, writeGenerated } from './project.js';
 import { detectStack, parseStack } from './stack.js';
+import { libraryStatus, uiLibrary } from './library.js';
 import { tracked } from './usage.js';
 
 const MAX_WARNINGS = 5;
@@ -15,13 +16,16 @@ function capWarnings(warnings) {
   return [...warnings.slice(0, MAX_WARNINGS), `+${warnings.length - MAX_WARNINGS} more`];
 }
 
+const withLibrary = (library) => (library ? { uiLibrary: libraryStatus(library) } : {});
+
 async function current(projectDir) {
   requireProject(projectDir);
   const state = await loadState(projectDir);
   if (!state.current || !state.stack) throw new Error('No design is indexed for this project. Call figma_index first.');
   const { fileKey, nodeId, version, dir, slug: designSlug } = state.current;
   const analysis = analyze(await getDesign(fileKey, nodeId, version), state.stack.assetUrl);
-  return { state, analysis, fileKey, ctx: contextFor(analysis, state.stack, dir, designSlug) };
+  const library = uiLibrary(projectDir, state.stack.framework);
+  return { state, analysis, fileKey, ctx: contextFor(analysis, state.stack, dir, designSlug, library) };
 }
 
 async function indexDesign({ url, projectDir, stack }) {
@@ -52,6 +56,7 @@ async function indexDesign({ url, projectDir, stack }) {
     assets: analysis.assets.length,
     tokens: analysis.tokens.length,
     fonts: analysis.fonts,
+    ...withLibrary(uiLibrary(projectDir, resolved.framework)),
   };
 }
 
@@ -81,6 +86,7 @@ async function writeChunks({ projectDir, ids }) {
   await saveState(projectDir, state);
   return {
     page: pageFiles[0].rel,
+    ...(ctx.library && !ctx.library.used ? withLibrary(ctx.library) : {}),
     chunks: results,
     ...(skipped.length ? { skipped, skippedReason: 'Changed since generation, so left as is. Delete a file to regenerate it.' } : {}),
   };
@@ -160,6 +166,7 @@ async function build({ url, projectDir, stack }) {
     design: index.design,
     stack: index.stack,
     fonts: index.fonts,
+    ...(index.uiLibrary ? { uiLibrary: index.uiLibrary } : {}),
     page: written.page,
     chunks: index.chunks.map(({ id, name, repeat }) => {
       const { file, warnings } = files.get(id);
