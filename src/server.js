@@ -4,7 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { figmaAssets, figmaBuild, figmaChunk, figmaIndex } from './tools.js';
 
-const server = new McpServer({ name: 'figma2ui', version: '0.1.0' });
+const server = new McpServer({ name: 'figma2ui', version: '0.1.1' });
 const projectDir = z.string().describe('Absolute project path');
 const ids = z.array(z.string()).optional().describe('Omit for all');
 

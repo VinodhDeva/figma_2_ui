@@ -1,6 +1,6 @@
 {
   "name": "figma2ui-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server that turns Figma designs into UI code for your stack with minimal agent tokens",
   "type": "module",
   "bin": {
