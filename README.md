@@ -17,7 +17,7 @@ supports MCP: Kiro, Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini
 
 ## Quick start
 
-You need Node.js 20 or later, git, and a Figma account.
+You need Node.js 20 or later and a Figma account.
 
 ### 1. Create a Figma token
 
@@ -37,7 +37,7 @@ No clone or install is needed. `npx` downloads and runs the server.
   "mcpServers": {
     "figma2ui": {
       "command": "npx",
-      "args": ["-y", "github:VinodhDeva/figma_2_ui"],
+      "args": ["-y", "figma2ui-mcp"],
       "env": { "FIGMA_TOKEN": "your_token" }
     }
   }
@@ -55,7 +55,7 @@ No clone or install is needed. `npx` downloads and runs the server.
 **Claude Code**
 
 ```bash
-claude mcp add figma2ui -e FIGMA_TOKEN=your_token -- npx -y github:VinodhDeva/figma_2_ui
+claude mcp add figma2ui -e FIGMA_TOKEN=your_token -- npx -y figma2ui-mcp
 ```
 
 **Codex** (`~/.codex/config.toml`)
@@ -63,7 +63,7 @@ claude mcp add figma2ui -e FIGMA_TOKEN=your_token -- npx -y github:VinodhDeva/fi
 ```toml
 [mcp_servers.figma2ui]
 command = "npx"
-args = ["-y", "github:VinodhDeva/figma_2_ui"]
+args = ["-y", "figma2ui-mcp"]
 env = { FIGMA_TOKEN = "your_token" }
 ```
 
@@ -300,19 +300,20 @@ To run a local checkout in your AI tool, use `"command": "node"` with
 | `docs/system-design.html` | Animated overview for stakeholders |
 | `docs/low-level-design.html` | Detailed design for engineers |
 
-### Publishing to npm
+### Releasing a new version
 
-The package is ready to publish as `figma2ui-mcp`. It is not on the npm registry yet. To publish:
+The package is published on npm as [`figma2ui-mcp`](https://www.npmjs.com/package/figma2ui-mcp).
+npm never lets a published version be overwritten, so raise the version first:
 
 ```bash
-npm login
+npm version patch
 ```
 
 ```bash
 npm publish
 ```
 
-After that, `"args": ["-y", "figma2ui-mcp"]` can replace the GitHub form in the configs above.
+To try unreleased code from GitHub, use `"args": ["-y", "github:VinodhDeva/figma_2_ui"]`.
 
 ## License
 
