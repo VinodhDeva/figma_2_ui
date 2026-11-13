@@ -43,5 +43,6 @@
   "homepage": "https://github.com/VinodhDeva/figma_2_ui#readme",
   "bugs": {
     "url": "https://github.com/VinodhDeva/figma_2_ui/issues"
-  }
+  },
+  "license": "MIT"
 }

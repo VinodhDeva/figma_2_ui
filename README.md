@@ -313,3 +313,7 @@ npm publish
 ```
 
 After that, `"args": ["-y", "figma2ui-mcp"]` can replace the GitHub form in the configs above.
+
+## License
+
+[MIT](LICENSE)
