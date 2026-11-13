@@ -404,3 +404,22 @@ test('icons saved under old node-id names are reused instead of rendered again',
   assert.equal(out.fromCache, 1);
   assert.equal(calls.filter((c) => c.includes('/v1/images/')).length, 0);
 });
+
+test('older Angular gets assets in src/assets with matching URLs', async () => {
+  mockFigma(landing());
+  const dir = project({ '@angular/core': '^16.2.0' });
+  assert.equal(detectStack(dir).assets, 'src/assets/figma');
+  assert.equal(detectStack(project({ '@angular/core': '^19.0.0' })).assets, 'public/figma');
+  await figmaIndex({ url: URL_, projectDir: dir });
+  await figmaChunk({ projectDir: dir });
+  await figmaAssets({ projectDir: dir });
+  assert.ok(existsSync(join(dir, 'src/assets/figma/img-aaa.png')));
+  const page = readFileSync(join(dir, 'src/figma/landing-page/Cards.component.ts'), 'utf8');
+  assert.ok(page.includes('photoSrc="/assets/figma/img-aaa.png"'), page);
+});
+
+test('results list the fonts and weights the app must load', async () => {
+  mockFigma(landing());
+  const index = await figmaIndex({ url: URL_, projectDir: project({ react: '1' }) });
+  assert.deepEqual(index.fonts, ['Inter:400']);
+});

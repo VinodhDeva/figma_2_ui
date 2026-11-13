@@ -15,12 +15,16 @@ function readDeps(dir) {
 
 function make(framework, dir, deps, styling, label = framework) {
   if (!WEB.has(framework)) return { framework: 'other', label, styling: null, ext: 'md', assets: 'figma2ui/assets', root: 'figma2ui' };
+  // Angular before 17 serves static files from src/assets, and upgraded projects often keep that setup.
+  const major = parseInt(String(deps['@angular/core'] ?? '').replace(/^\D+/, ''), 10);
+  const srcAssets = framework === 'angular' && (major < 17 || (!existsSync(join(dir, 'public')) && existsSync(join(dir, 'src/assets'))));
   return {
     framework,
     label,
     styling: styling ?? (deps.tailwindcss ? 'tailwind' : 'css'),
     ext: deps.typescript || existsSync(join(dir, 'tsconfig.json')) ? 'tsx' : 'jsx',
-    assets: deps['@sveltejs/kit'] ? 'static/figma' : 'public/figma',
+    assets: deps['@sveltejs/kit'] ? 'static/figma' : srcAssets ? 'src/assets/figma' : 'public/figma',
+    assetUrl: srcAssets ? '/assets/figma/' : '/figma/',
     root: 'src/figma',
   };
 }

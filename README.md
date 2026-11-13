@@ -1,157 +1,110 @@
 # figma2ui
 
-Turn a Figma design into UI code in your project's own tech stack, while spending as few AI
-agent credits as possible.
+Turn a Figma design into UI code in your project's own tech stack, with as few AI credits and
+as few Figma API calls as possible.
 
-figma2ui is a local [MCP](https://modelcontextprotocol.io) server, so it works with any AI tool
-that supports MCP: Kiro, Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, and others.
+figma2ui is a local [MCP](https://modelcontextprotocol.io) server. It works with any AI tool that
+supports MCP: Kiro, Claude Code, Claude Desktop, Cursor, Windsurf, Codex, Gemini CLI, and others.
 
-## Why it uses fewer credits
+- **Low AI cost.** The conversion runs as plain code on your machine. The AI gets short
+  summaries; raw Figma data and generated code stay on disk.
+- **Few Figma calls.** Designs, images, and icons are cached. An unchanged design costs no
+  rate-limited call.
+- **Close to Figma.** Positions, sizes, line heights, colors, and charts are taken from the
+  design, not guessed by the AI.
+- **Your stack.** React, Vue, Svelte, Angular, or HTML, with Tailwind or plain CSS. Other stacks
+  get a compact blueprint.
 
-Most Figma-to-code workflows send large design data through the agent. figma2ui does the
-conversion in plain code on your machine instead:
+## Quick start
 
-- The agent receives short summaries. Raw Figma data and generated code stay on disk.
-- There are only 3 tools, so tool definitions stay small on every turn.
-- Large designs are split into chunks of at most 150 nodes, so the agent can open one at a time.
-- Repeated designs, such as a grid of cards, become one component with props.
-- Colors and font sizes become shared CSS variables.
-- Designs are cached by Figma file version, so unchanged designs are not downloaded again.
+You need Node.js 20 or later, git, and a Figma account.
 
-On a synthetic 601-node test design, 641 KB of Figma-style JSON produced 1.3 KB of tool results,
-and the 3 tool definitions total 1.4 KB. Real results depend on your design.
-
-## Supported stacks
-
-The stack is detected from your project files.
-
-| Your project | Output |
-|--------------|--------|
-| React, Next.js, Remix | `.tsx` or `.jsx` |
-| Vue, Nuxt | `.vue` |
-| Svelte, SvelteKit | `.svelte` |
-| Angular | Standalone `.component.ts` |
-| Plain HTML | `.html` |
-| React Native, Flutter, SwiftUI, Compose, and any other stack | Compact spec files that the agent translates to native code |
-
-Web projects get Tailwind classes (v3 or v4) if `tailwindcss` is installed, otherwise plain CSS
-files. Non-web stacks cost more credits, because the agent writes the final code.
-
-## Setup
-
-You need Node.js 20 or later.
-
-### 1. Install
-
-```bash
-git clone https://github.com/VinodhDeva/figma_2_ui.git
-```
-
-```bash
-cd figma_2_ui && npm install
-```
-
-### 2. Create a Figma token
+### 1. Create a Figma token
 
 In Figma, open Settings, Security, Personal access tokens. Create a token with read access to
-file content and file metadata.
+**file content** and **file metadata**. The metadata scope matters: without it the design cache
+cannot be used, and every run spends a rate-limited call.
 
-> **Security:** this token gives access to your Figma files. Never commit it or paste it into
-> a chat. Keep any config file that contains it out of version control.
+> **Security:** this token gives access to your Figma files. Never commit it or paste it into a
+> chat. Keep any config file that contains it out of version control.
 
-### 3. Add the server to your AI tool
+### 2. Add the server to your AI tool
 
-Replace `/absolute/path/to/figma_2_ui` with the folder you cloned.
-
-**Claude Code**
-
-```bash
-claude mcp add figma2ui -e FIGMA_TOKEN=your_token -- node /absolute/path/to/figma_2_ui/src/server.js
-```
-
-**Kiro, Claude Desktop, Cursor, Windsurf, Gemini CLI**
-
-| Tool | Config file |
-|------|-------------|
-| Kiro | `.kiro/settings/mcp.json` in the project, or `~/.kiro/settings/mcp.json` for all projects |
-| Claude Desktop | `claude_desktop_config.json` |
-| Cursor | `.cursor/mcp.json` |
-| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
-| Gemini CLI | `~/.gemini/settings.json` |
+No clone or install is needed. `npx` downloads and runs the server.
 
 ```json
 {
   "mcpServers": {
     "figma2ui": {
-      "command": "node",
-      "args": ["/absolute/path/to/figma_2_ui/src/server.js"],
+      "command": "npx",
+      "args": ["-y", "github:VinodhDeva/figma_2_ui"],
       "env": { "FIGMA_TOKEN": "your_token" }
     }
   }
 }
 ```
 
+| Tool | Where this goes |
+|------|-----------------|
+| Kiro | `~/.kiro/settings/mcp.json`, or `.kiro/settings/mcp.json` in one project |
+| Cursor | `.cursor/mcp.json` |
+| Claude Desktop | `claude_desktop_config.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Gemini CLI | `~/.gemini/settings.json` |
+
+**Claude Code**
+
+```bash
+claude mcp add figma2ui -e FIGMA_TOKEN=your_token -- npx -y github:VinodhDeva/figma_2_ui
+```
+
 **Codex** (`~/.codex/config.toml`)
 
 ```toml
 [mcp_servers.figma2ui]
-command = "node"
-args = ["/absolute/path/to/figma_2_ui/src/server.js"]
+command = "npx"
+args = ["-y", "github:VinodhDeva/figma_2_ui"]
 env = { FIGMA_TOKEN = "your_token" }
 ```
 
-### 4. Give the agent the workflow
+The first start takes a little longer while `npx` downloads the server.
 
-[skill/SKILL.md](skill/SKILL.md) tells the agent how to use the tools cheaply.
+### 3. Give the AI the workflow
+
+[skill/SKILL.md](skill/SKILL.md) tells the AI how to use the tools cheaply and how to keep the
+result matching Figma. Copy its body, without the top `---` block.
 
 | Tool | What to do |
 |------|------------|
+| Kiro | Paste it into `.kiro/steering/figma-to-ui.md` |
 | Claude | Copy the `skill` folder to `~/.claude/skills/figma-to-ui` |
-| Codex and tools that read `AGENTS.md` | Paste its body into `AGENTS.md` |
-| Cursor | Paste its body into a file in `.cursor/rules/` |
-| Kiro | Paste its body into `.kiro/steering/figma-to-ui.md` |
+| Cursor | Paste it into a file in `.cursor/rules/` |
+| Codex and tools that read `AGENTS.md` | Paste it into `AGENTS.md` |
 
-## Usage
+### 4. Use it
 
-Select a frame in Figma, copy its link, and ask your agent:
+Select a frame in Figma, copy its link, and ask your AI tool:
 
 ```text
 Build this design in my app: https://www.figma.com/design/KEY/Name?node-id=1-2
 ```
 
-The link should be a `figma.com/design/...` link with a `node-id`. Without a `node-id`, the first
-page is used.
+Use a `figma.com/design/...` link with a `node-id`. Without a `node-id`, the first page is used.
 
-A web project needs 3 tool calls:
+## Tools
 
 | Tool | Input | What it does |
 |------|-------|--------------|
-| `figma_index` | `url`, `projectDir`, optional `stack` | Fetches and caches the design, detects the stack, returns the chunk map |
-| `figma_chunk` | `projectDir`, optional `ids` | Writes code or spec files. Returns paths and warnings |
+| `figma_index` | `url`, `projectDir`, optional `stack` | Fetches and caches the design, detects the stack, returns the chunk map and fonts |
+| `figma_chunk` | `projectDir`, optional `ids` | Writes code or blueprint files. Returns paths and warnings |
 | `figma_assets` | `projectDir`, optional `ids` | Downloads images and icons |
 
-To override the detected stack, ask the agent to pass `stack`, for example `vue+tailwind`,
-`react+css`, or `flutter`.
-
-### Generated files
-
-```text
-.figma2ui.json                    Detected stack and generation state
-src/figma/<design>/               Components, Page, and figma-tokens.css
-public/figma/                     Images and icons (SvelteKit: static/figma/)
-figma2ui/<design>/                Non-web stacks: index.md, specs, tokens.css
-figma2ui/assets/                  Non-web stacks: images and icons
-figma2ui/usage-report.md          Figma API calls and token estimates
-```
-
-Render `Page` from your app's route or entry file. A generated file is replaced only if it has
-not changed since it was generated, so your edits are kept. Delete a file to regenerate it.
+A web project needs these 3 calls, once each.
 
 ## Code mode (optional)
 
-By default the server exposes 3 tools, and the AI calls them one after another. In code mode, the
-server exposes a single `figma_build` tool instead. It runs the whole workflow as code inside the
-server and returns one merged summary.
+In code mode the server exposes one tool, `figma_build`, instead of three. It runs the whole
+workflow as code inside the server and returns one merged summary.
 
 | | Default | Code mode |
 |---|---|---|
@@ -160,98 +113,203 @@ server and returns one merged summary.
 | Tool calls per design | 3 | 1 |
 | Re-run only some chunks or assets | yes, with `ids` | no, rebuilds everything |
 
-To turn it on, add `FIGMA2UI_CODE_MODE` to the server's `env`, next to the token:
+Turn it on by adding `FIGMA2UI_CODE_MODE` to the server's `env`, then restart the server:
 
 ```json
 "env": { "FIGMA_TOKEN": "your_token", "FIGMA2UI_CODE_MODE": "1" }
 ```
 
-For Claude Code, add `-e FIGMA2UI_CODE_MODE=1` to the `claude mcp add` command. Restart the server
-in your AI tool after changing it.
+If an asset download fails in code mode, for example on a rate limit, the generated code is kept
+and the error is reported under `assets`. Rebuilding everything is cheap, because unchanged
+designs, images, and icons come from the cache.
 
-If an asset download fails in code mode, for example because of a rate limit, the generated code
-is kept and the result reports the error under `assets`.
+## Supported stacks
 
-AI tools that have their own Code Mode, such as Cloudflare Agents, work with either setting.
+The stack is detected from your project files and saved in `.figma2ui.json`.
+
+| Your project | Output |
+|--------------|--------|
+| React, Next.js, Remix | `.tsx` or `.jsx` |
+| Vue, Nuxt | `.vue` |
+| Svelte, SvelteKit | `.svelte` |
+| Angular | Standalone `.component.ts` |
+| Plain HTML | `.html` |
+| React Native, Flutter, SwiftUI, Compose, and any other stack | Compact blueprint files that the AI translates to native code |
+
+Web projects get Tailwind classes (v3 or v4) if `tailwindcss` is installed, otherwise plain CSS
+files. Non-web stacks cost more credits, because the AI writes the final code.
+
+To override detection, ask the AI to pass `stack`, for example `vue+tailwind`, `react+css`, or
+`flutter`.
+
+## Generated files
+
+```text
+.figma2ui.json                    Detected stack and generation state
+src/figma/<design>/               Components, Page, and figma-tokens.css
+public/figma/                     Images and icons
+figma2ui/usage-report.md          Figma API calls and token estimates
+figma2ui/<design>/                Non-web stacks: index.md, blueprints, tokens.css
+figma2ui/assets/                  Non-web stacks: images and icons
+```
+
+Images and icons go where your framework serves static files, so generated code can use plain
+paths with no imports:
+
+| Project | Folder | Path in code |
+|---------|--------|--------------|
+| Most web projects | `public/figma/` | `/figma/...` |
+| SvelteKit | `static/figma/` | `/figma/...` |
+| Angular 16 or older, or Angular with `src/assets` and no `public` folder | `src/assets/figma/` | `/assets/figma/...` |
+
+A generated file is replaced only if it has not changed since it was generated, so your edits are
+kept. Delete a file to regenerate it.
+
+## How it keeps Figma calls low
+
+Figma limits its scarcest "Tier 1" calls by seat, so the server avoids them where it can.
+
+| Situation | Tier 1 calls |
+|-----------|--------------|
+| Design unchanged since the last run | 0 |
+| Design edited, no new icons | 1 |
+| Design edited, with new or changed icons | 2 |
+
+- **Design cache.** A cheap metadata call checks the file version. The design is downloaded only
+  when the version changed.
+- **Images** are named by Figma's content hash and downloaded once.
+- **Icons** are named by a fingerprint of how they look, including their vector paths. Moved,
+  renamed, or copied icons are reused, and identical icons become one file.
+- **Shared cache.** `~/.cache/figma2ui` serves designs and assets to every project on your
+  machine.
+- **Later steps make no design calls.** `figma_chunk` always reads the cache.
+
+## How it matches Figma
+
+What the server does:
+
+- Uses each layer's exact position, size, color, radius, border, shadow, and opacity.
+- Converts auto-layout to flexbox, with the same gaps, padding, and alignment.
+- Keeps Figma's line height for every text, and never lets single-line text wrap.
+- Draws donut and pie segments as real vector shapes.
+- For plain CSS projects, resets browser default margins and button styles that would shift
+  layers. Tailwind projects already have this reset.
+
+What your app must do:
+
+- **Render the generated `Page` as it is.** Wrapping chunks in your own containers with other
+  widths, borders, or padding shifts everything inside. The skill file tells the AI this.
+- **Load the fonts** listed under `fonts` in the tool result, for example `Inter:400,500,600,700`.
+  A missing weight makes text render in a different width.
+- **Check at the design's width.** Frames without auto-layout use fixed positions. They match
+  Figma at the frame's width and do not adapt to smaller screens. Such frames are listed in
+  `warnings`.
 
 ## Usage report
 
-Every tool result ends with a short `usage` block: Figma API calls in that step, estimated
-tokens for that step, and running totals for the design. The full report is written to
-`figma2ui/usage-report.md` in your project after every call:
+Every tool result ends with a short `usage` block: Figma API calls in that step, estimated tokens
+for that step, and running totals for the design. The full report is written to
+`figma2ui/usage-report.md` after every call:
 
 - Figma API calls by request, rate-limit tier, and status, including failed calls
-- Design cache hits and asset downloads, which do not count toward Figma limits
+- Cache hits and asset downloads, which do not count toward Figma limits
 - Estimated tokens for each tool call's input and result
 - How much design data was kept out of the AI
 
-Token counts are estimates (bytes / 4) of what passes between the AI and this MCP. They do not
-include the AI's own reasoning, the tool definitions, or files the AI opens. Your AI tool's
-usage screen shows the full session.
+Token counts are estimates (bytes / 4) of what passes between the AI and this server. They do not
+include the AI's own reasoning, the tool definitions, or files the AI opens. Your AI tool's usage
+screen shows the full session.
 
 ## Figma plans and rate limits
 
-Figma limits REST API calls by seat type, and the limit follows the plan of the file.
+The limit follows the plan of the file, and the seat of the account that created the token.
 
 | Seat | Limit on file reads |
 |------|---------------------|
 | Dev or Full, on a paid plan | Per-minute limits, which are ample for this tool |
 | View or Collab | A small monthly quota, up to 20 and sometimes far fewer |
 
-Each new design version uses 1 limited call. Icons cost 1 more, and only when the design has icons
-that have never been downloaded before. Icons are named by a fingerprint of how they look, so
-moved, renamed, or copied icons are reused, and a shared cache in `~/.cache/figma2ui/assets`
-serves them to every project on your machine.
-
 For regular use, a Professional plan with a Dev seat is enough. Choose a Full seat if you also
-edit designs. Keep the file in the paid team, and create the token from the account holding that
-seat. See [Figma's rate limits](https://developers.figma.com/docs/rest-api/rate-limits/) for
-current values.
+edit designs. Keep the file in the paid team. See
+[Figma's rate limits](https://developers.figma.com/docs/rest-api/rate-limits/) for current values.
+
+## Settings
+
+| Environment variable | Purpose |
+|----------------------|---------|
+| `FIGMA_TOKEN` | Required. Figma personal access token |
+| `FIGMA2UI_CODE_MODE` | Set to `1` for the single `figma_build` tool |
+| `FIGMA2UI_CACHE` | Cache folder. Default `~/.cache/figma2ui` |
 
 ## Limitations
 
 - Figma Make files and Make code layers cannot be converted, because they have no design layers.
-- Interactions, animation, and state logic are left to the agent.
+- Interactions, animation, and state logic are left to the AI.
 - Breakpoint-specific layouts are not generated. Only auto-layout fill and hug carry over.
-- Frames without auto-layout use absolute positions and are listed in `warnings`.
 - Existing project components are not reused.
-- Some Figma effects are approximated or ignored, and are listed in `warnings`.
+- Rotation, blend modes, mixed styles inside one text, and angular gradients are approximated or
+  ignored, and are listed in `warnings`.
 
 ## Troubleshooting
 
-| Message | What to do |
-|---------|------------|
+| Message or problem | What to do |
+|--------------------|------------|
 | `FIGMA_TOKEN is not set` | Add the token to the `env` of this server in your AI tool's config |
 | `Figma returned 403` | Check the token, and that its account can open the file |
 | `Figma rate limit reached` | Wait for the stated time, or see [Figma plans and rate limits](#figma-plans-and-rate-limits) |
 | `Figma Make links are not supported` | Use a link to a Figma Design file |
 | `no design layers to convert` | The frame is a Make code layer. Link to a frame with normal layers |
-| `Could not detect the tech stack` | Tell the agent your stack, so it can pass `stack` |
+| `Could not detect the tech stack` | Tell the AI your stack, so it can pass `stack` |
 | `skipped` in a result | Those files were edited after generation. Delete one to regenerate it |
+| Layout is shifted compared with Figma | See [How it matches Figma](#how-it-matches-figma): render `Page` as it is, and load the listed fonts |
+| Images do not show | Check that the assets folder in [Generated files](#generated-files) is the one your framework serves |
+| An icon looks outdated | Delete it from the assets folder and run `figma_assets` again |
 
 ## Project status
 
-This is an early version. Automated tests use a mocked Figma API, and generated output has been
-compiled with the React (esbuild), Vue, Svelte, Angular, and Tailwind toolchains. A full run on a
-real layered Figma design and a visual comparison have not been completed yet.
+This is an early version. Automated tests use a mocked Figma API. Generated output has been
+compiled with the React (esbuild), Vue, Svelte, Angular, and Tailwind toolchains. One real
+dashboard design was generated for React with plain CSS and compared with Figma at the frame's
+width: sampled text positions were within 1px. Other stacks and designs have not been compared
+visually yet.
 
 ## Development
 
 ```bash
-npm test
+git clone https://github.com/VinodhDeva/figma_2_ui.git
 ```
+
+```bash
+cd figma_2_ui && npm install && npm test
+```
+
+To run a local checkout in your AI tool, use `"command": "node"` with
+`"args": ["/absolute/path/to/figma_2_ui/src/server.js"]`.
 
 | Path | Purpose |
 |------|---------|
 | `src/server.js` | MCP wiring |
 | `src/tools.js` | The 3 tools, and `figma_build` for code mode |
-| `src/figma.js` | Figma API client and cache |
+| `src/figma.js` | Figma API client and caches |
 | `src/tree.js` | Converts Figma nodes to a neutral element tree |
 | `src/chunk.js` | Deduplication and chunking |
 | `src/stack.js` | Stack detection |
-| `src/emit.js` | Code and spec output for each target |
+| `src/emit.js` | Code and blueprint output for each target |
 | `src/project.js` | Guarded file writes |
 | `src/usage.js` | Usage tracking and report |
 | `docs/system-design.html` | Animated overview for stakeholders |
 | `docs/low-level-design.html` | Detailed design for engineers |
-| `docs/superpowers/` | Original design and implementation plan |
+
+### Publishing to npm
+
+The package is ready to publish as `figma2ui-mcp`. It is not on the npm registry yet. To publish:
+
+```bash
+npm login
+```
+
+```bash
+npm publish
+```
+
+After that, `"args": ["-y", "figma2ui-mcp"]` can replace the GitHub form in the configs above.

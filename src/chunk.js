@@ -119,8 +119,8 @@ function summarize(chunk) {
   chunk.warnings = [...counts].map(([w, n]) => (n > 1 ? `${w} (x${n})` : w));
 }
 
-export function analyze(design) {
-  const { root, tokens, assets } = buildTree(design.document, design.styles);
+export function analyze(design, assetUrl) {
+  const { root, tokens, assets, fonts } = buildTree(design.document, design.styles, assetUrl);
   const chunks = [];
   const nameFor = uniqueNamer(['Page']);
   dedupe(root, chunks, nameFor);
@@ -132,5 +132,5 @@ export function analyze(design) {
   }
   const page = { id: 'page', name: 'Page', el: root, repeat: 1, props: [] };
   [...chunks, page].forEach(summarize);
-  return { name: design.name, version: design.version, rawBytes: design.rawBytes, page, chunks, tokens, assets };
+  return { name: design.name, version: design.version, rawBytes: design.rawBytes, page, chunks, tokens, assets, fonts };
 }

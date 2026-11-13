@@ -20,7 +20,7 @@ async function current(projectDir) {
   const state = await loadState(projectDir);
   if (!state.current || !state.stack) throw new Error('No design is indexed for this project. Call figma_index first.');
   const { fileKey, nodeId, version, dir, slug: designSlug } = state.current;
-  const analysis = analyze(await getDesign(fileKey, nodeId, version));
+  const analysis = analyze(await getDesign(fileKey, nodeId, version), state.stack.assetUrl);
   return { state, analysis, fileKey, ctx: contextFor(analysis, state.stack, dir, designSlug) };
 }
 
@@ -34,7 +34,7 @@ async function indexDesign({ url, projectDir, stack }) {
   }
   const version = await fetchVersion(fileKey);
   const design = await getDesign(fileKey, nodeId, version);
-  const analysis = analyze(design);
+  const analysis = analyze(design, resolved.assetUrl);
   const rootName = design.document.name || design.name;
   const designSlug = slug(rootName) || 'design';
   const dir = `${resolved.root}/${designSlug}`;
@@ -51,6 +51,7 @@ async function indexDesign({ url, projectDir, stack }) {
     chunks: analysis.chunks.map((c) => ({ id: c.id, name: c.name, nodes: c.nodes, ...(c.repeat > 1 ? { repeat: c.repeat } : {}) })),
     assets: analysis.assets.length,
     tokens: analysis.tokens.length,
+    fonts: analysis.fonts,
   };
 }
 
@@ -158,6 +159,7 @@ async function build({ url, projectDir, stack }) {
   return {
     design: index.design,
     stack: index.stack,
+    fonts: index.fonts,
     page: written.page,
     chunks: index.chunks.map(({ id, name, repeat }) => {
       const { file, warnings } = files.get(id);

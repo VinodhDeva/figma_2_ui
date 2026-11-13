@@ -4,7 +4,7 @@ import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 const STATE = '.figma2ui.json';
-const ALLOWED = ['src/figma', 'public/figma', 'static/figma', 'figma2ui'];
+const ALLOWED = ['src/figma', 'src/assets/figma', 'public/figma', 'static/figma', 'figma2ui'];
 
 export function requireProject(projectDir) {
   if (!isAbsolute(projectDir)) throw new Error('projectDir must be an absolute path.');

@@ -321,7 +321,7 @@ figma2ui/assets/         spec target assets</pre></div>
       <tr><th>Risk</th><th>Control</th><th>Where</th></tr>
       <tr><td>Design text breaking or injecting template code</td><td>Text and attributes are written as numeric entities for <code>&amp; &lt; &gt; " ' { } ` \ @</code> and newline, which are literal in JSX, Vue, Svelte, Angular, and HTML.</td><td><code>emit.js esc()</code></td></tr>
       <tr><td>Layer name used as a path or identifier</td><td>Names are reduced to ASCII letters and digits before use.</td><td><code>names.js</code></td></tr>
-      <tr><td>Writing outside the project</td><td>Absolute <code>projectDir</code> required. Resolved path must be inside <code>src/figma</code>, <code>public/figma</code>, <code>static/figma</code>, or <code>figma2ui</code>. Symlinked output folders are refused.</td><td><code>project.js safePath()</code></td></tr>
+      <tr><td>Writing outside the project</td><td>Absolute <code>projectDir</code> required. Resolved path must be inside <code>src/figma</code>, <code>src/assets/figma</code>, <code>public/figma</code>, <code>static/figma</code>, or <code>figma2ui</code>. Symlinked output folders are refused.</td><td><code>project.js safePath()</code></td></tr>
       <tr><td>Overwriting manual edits</td><td>A file is replaced only if its hash matches the one recorded at generation. Otherwise it is listed in <code>skipped</code>.</td><td><code>project.js writeGenerated()</code></td></tr>
       <tr><td>Token leak</td><td>Read from <code>FIGMA_TOKEN</code>, sent only to <code>api.figma.com</code>, never logged or cached, not sent to presigned asset URLs.</td><td><code>figma.js</code></td></tr>
       <tr><td>Link to a non-Figma host</td><td>Only <code>https</code> links on <code>figma.com</code> or <code>www.figma.com</code> are accepted.</td><td><code>figma.js parseFigmaUrl()</code></td></tr>
@@ -350,7 +350,7 @@ figma2ui/assets/         spec target assets</pre></div>
     <h2><small>12</small>Tests and open items</h2>
     <div class="grid" style="margin-top:16px">
       <div class="card"><h3>Covered</h3><ul>
-        <li>30 <code>node:test</code> cases in <code>test/figma2ui.test.js</code>, with <code>fetch</code> mocked.</li>
+        <li>41 <code>node:test</code> cases in <code>test/figma2ui.test.js</code>, with <code>fetch</code> mocked.</li>
         <li>URL parsing, flex mapping, absolute fallback, dedupe and props, chunk limit, stack detection, escaping, each emitter, path and symlink guards, edit protection, cache reuse, rate-limit errors.</li>
         <li>Generated output accepted by esbuild (React), the Vue and Svelte compilers, the Angular template parser, and Tailwind v4.</li>
         <li>Server answers <code>tools/list</code> over stdio.</li>

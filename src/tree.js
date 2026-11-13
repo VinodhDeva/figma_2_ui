@@ -68,7 +68,7 @@ function addAsset(ctx, kind, source, key = source) {
   // shortcut: image fills are always named .png even if Figma stores JPEG; browsers sniff the type, add content-type lookup if a stack needs true extensions.
   const file = kind === 'svg' ? `svg-${safe}.svg` : `img-${safe}.png`;
   if (!ctx.assets.has(file)) ctx.assets.set(file, { id: file, kind, source, file });
-  return { file, src: `/figma/${file}` };
+  return { file, src: `${ctx.assetUrl}${file}` };
 }
 
 const TAU = Math.PI * 2;
@@ -213,7 +213,13 @@ function textEl(node, parent, el, ctx) {
   el.tag = textTag(s.fontSize ?? 16, node.name, parent);
   el.text = node.characters ?? '';
   // shortcut: quotes, backslashes and CSS delimiters are dropped from family names; fonts using them need a manual fix.
-  if (s.fontFamily) css['font-family'] = ctx.tokens.add('font', `"${s.fontFamily.replace(/["\\;{}<>\n]/g, '')}", sans-serif`);
+  if (s.fontFamily) {
+    const family = s.fontFamily.replace(/["\\;{}<>\n]/g, '');
+    css['font-family'] = ctx.tokens.add('font', `"${family}", sans-serif`);
+    // The app must load these, or text falls back to another font and stops matching Figma.
+    if (!ctx.fonts.has(family)) ctx.fonts.set(family, new Set());
+    ctx.fonts.get(family).add(s.fontWeight ?? 400);
+  }
   if (s.fontSize) css['font-size'] = ctx.tokens.add('size', px(s.fontSize), styleName);
   if (s.fontWeight) css['font-weight'] = String(s.fontWeight);
   // Figma's auto line height still reports the px height it renders with, so it is used too.
@@ -319,8 +325,8 @@ function buildNode(node, parent, ctx) {
   return el;
 }
 
-export function buildTree(document, styles = {}) {
-  const ctx = { tokens: createTokens(), assets: new Map(), styles };
+export function buildTree(document, styles = {}, assetUrl = '/figma/') {
+  const ctx = { tokens: createTokens(), assets: new Map(), fonts: new Map(), styles, assetUrl };
   let node = document;
   if (node.type === 'CANVAS') {
     const kids = (node.children ?? []).filter(visible);
@@ -340,5 +346,6 @@ export function buildTree(document, styles = {}) {
     Object.assign(root.css, { width: '100%', 'max-width': px(box(node).width), margin: '0 auto' });
     if (!root.css.display && root.children.length) root.css.height = px(box(node).height);
   }
-  return { root, tokens: ctx.tokens.list(), assets: [...ctx.assets.values()] };
+  const fonts = [...ctx.fonts].map(([family, weights]) => `${family}:${[...weights].sort((a, b) => a - b).join(',')}`);
+  return { root, tokens: ctx.tokens.list(), assets: [...ctx.assets.values()], fonts };
 }
