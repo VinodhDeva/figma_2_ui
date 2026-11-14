@@ -6,7 +6,7 @@ import { cacheAsset, fetchBytes, fetchVersion, getDesign, imageFillUrls, parseFi
 import { slug } from './names.js';
 import { fileExists, loadState, requireProject, saveState, writeGenerated } from './project.js';
 import { detectStack, parseStack } from './stack.js';
-import { libraryStatus, requireUiLibrary, uiLibrary } from './library.js';
+import { libraryStatus, uiLibrary } from './library.js';
 import { tracked } from './usage.js';
 
 const MAX_WARNINGS = 5;
@@ -18,13 +18,14 @@ function capWarnings(warnings) {
 
 const withLibrary = (library) => (library ? { uiLibrary: libraryStatus(library) } : {});
 
-async function current(projectDir) {
+// Only figma_chunk needs the UI library, so a library problem never blocks figma_assets.
+async function current(projectDir, useLibrary = false) {
   requireProject(projectDir);
   const state = await loadState(projectDir);
   if (!state.current || !state.stack) throw new Error('No design is indexed for this project. Call figma_index first.');
   const { fileKey, nodeId, version, dir, slug: designSlug } = state.current;
   const analysis = analyze(await getDesign(fileKey, nodeId, version), state.stack.assetUrl);
-  const library = uiLibrary(projectDir, state.stack.framework);
+  const library = useLibrary ? uiLibrary(projectDir, state.stack.framework) : null;
   return { state, analysis, fileKey, ctx: contextFor(analysis, state.stack, dir, designSlug, library) };
 }
 
@@ -36,9 +37,8 @@ async function indexDesign({ url, projectDir, stack }) {
   if (!resolved) {
     throw new Error('Could not detect the tech stack. Ask the user for it, then call figma_index again with stack, for example "react+tailwind", "vue", or "flutter".');
   }
-  // Guard: fail fast before consuming any Figma API quota when the configured
-  // UI library is not installed. framework may be null until stack is resolved.
-  requireUiLibrary(projectDir, resolved.framework);
+  // Checked before any Figma API call: an unusable library stops here and costs no Figma quota.
+  const library = uiLibrary(projectDir, resolved.framework);
   const version = await fetchVersion(fileKey);
   const design = await getDesign(fileKey, nodeId, version);
   const analysis = analyze(design, resolved.assetUrl);
@@ -59,14 +59,12 @@ async function indexDesign({ url, projectDir, stack }) {
     assets: analysis.assets.length,
     tokens: analysis.tokens.length,
     fonts: analysis.fonts,
-    ...withLibrary(uiLibrary(projectDir, resolved.framework)),
+    ...withLibrary(library),
   };
 }
 
 async function writeChunks({ projectDir, ids }) {
-  const { state, analysis, ctx } = await current(projectDir);
-  // Guard: fail fast if the library was set after indexing but isn't installed yet.
-  requireUiLibrary(projectDir, state.stack?.framework);
+  const { state, analysis, ctx } = await current(projectDir, true);
   const known = new Map(analysis.chunks.map((c) => [c.id, c]));
   const unknown = (ids ?? []).filter((id) => !known.has(id));
   if (unknown.length) throw new Error(`Unknown chunk ids: ${unknown.join(', ')}. Call figma_index for the current list.`);

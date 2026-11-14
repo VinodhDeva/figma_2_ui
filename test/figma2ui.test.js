@@ -511,3 +511,43 @@ test('library components are aliased when a chunk has the same name', () => with
   assert.ok(file.includes("import { Button as UiButton } from '@chakra-ui/react';"), file);
   assert.ok(file.includes('export function Button(') && file.includes('<UiButton className='));
 }));
+
+test('none uses the UI library the project already has installed', () => withLibrary('none', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  fakeInstall(dir, '@mantine/core', '@mantine/hooks');
+  const index = await figmaIndex({ url: URL_, projectDir: dir });
+  assert.deepEqual(index.uiLibrary, { name: 'mantine', used: true, detected: true });
+  await figmaChunk({ projectDir: dir });
+  const header = readFileSync(join(dir, 'src/figma/landing-page/Header.jsx'), 'utf8');
+  assert.ok(header.startsWith("import { Button } from '@mantine/core';"), header);
+}));
+
+test('none with no library installed generates plain elements without an error', () => withLibrary('none', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  fakeInstall(dir, '@mui/material');
+  const index = await figmaIndex({ url: URL_, projectDir: dir });
+  assert.equal(index.uiLibrary.used, false);
+  assert.match(index.uiLibrary.note, /No supported UI library is installed/);
+  const out = await figmaChunk({ projectDir: dir });
+  assert.match(out.uiLibrary.note, /plain elements/);
+  assert.ok(readFileSync(join(dir, 'src/figma/landing-page/Header.jsx'), 'utf8').includes('<button'));
+}));
+
+test('none is safe in a global config: non-React projects are not blocked', () => withLibrary('none', async () => {
+  mockFigma(landing());
+  const index = await figmaIndex({ url: URL_, projectDir: project({ vue: '3' }) });
+  assert.match(index.uiLibrary.note, /React projects only/);
+}));
+
+test('a missing UI library does not block figma_assets', async () => {
+  mockFigma(landing());
+  const dir = project({ react: '1' });
+  await figmaIndex({ url: URL_, projectDir: dir });
+  await withLibrary('mui', async () => {
+    await assert.rejects(figmaChunk({ projectDir: dir }), /not installed/);
+    const assets = await figmaAssets({ projectDir: dir });
+    assert.equal(assets.written, 4);
+  });
+});

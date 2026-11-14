@@ -142,19 +142,50 @@ Turn it on by adding `FIGMA2UI_UI_LIBRARY` to the server's `env`, then restart t
 "env": { "FIGMA_TOKEN": "your_token", "FIGMA2UI_UI_LIBRARY": "mui" }
 ```
 
-The library must be installed in your project, including its required peer packages. The server
-checks `node_modules` in the project folder and its parent folders, so monorepo installs count.
+### Values
 
-- **Installed:** components are imported, for example `import { Button } from '@mui/material';`.
-- **Not installed:** the tool stops with an error that gives the install command for your package
-  manager, for example `npm install @mui/material @emotion/react @emotion/styled`. Nothing is
-  generated, and no Figma API call is made. Install it, then run the tool again.
-- **Unknown value:** the tool stops with an error that lists the supported values.
-- **Non-React project:** the tool stops with an error. Remove `FIGMA2UI_UI_LIBRARY` from the
-  config to generate for that project.
+| Value | What happens |
+|-------|--------------|
+| `mui`, `antd`, `chakra`, `mantine` | Use that library. It must be installed, or the tool stops (see below) |
+| `none` | Use the supported library the project already has installed. If it has none, generate plain HTML elements. Never stops the tool |
+| not set | Plain HTML elements |
+
+With `none`, libraries are checked in the order `mui`, `antd`, `chakra`, `mantine`, and the first
+one installed is used. The result says which one, for example
+`"uiLibrary": { "name": "mantine", "used": true, "detected": true }`.
+
+### The library is checked before Figma is contacted
+
+`figma_index` (and `figma_build` in code mode) checks the library first, right after detecting the
+stack and before any Figma API call:
+
+1. The server looks for the library and its required peer packages in `node_modules`, in the
+   project folder and its parent folders, so monorepo installs count.
+2. **Installed:** it continues to Figma, and generated code imports the components, for example
+   `import { Button } from '@mui/material';`.
+3. **Not installed:** it stops with a message that names the missing packages and gives the
+   install command for your package manager (npm, yarn, pnpm, or bun):
+
+   ```text
+   FIGMA2UI_UI_LIBRARY="mui" is set but @emotion/react, @emotion/styled are not installed in /path/to/app.
+   Install it with: npm install @emotion/react @emotion/styled — then try again. No Figma API call was made.
+   ```
+
+   Install the packages, then run the tool again. Nothing is generated and no Figma quota is used.
+
+`figma_chunk` repeats the check, in case the setting changed after indexing. `figma_assets` does
+not need the library and is never blocked by it.
+
+### Other errors
+
+| Situation | Message tells you to |
+|-----------|----------------------|
+| Unknown value, such as `bootstrap` | Use one of the supported values, or `none` |
+| Named library on a non-React project | Set it to `none`, or remove the setting |
 
 If you set it in a global config, such as `~/.kiro/settings/mcp.json`, it applies to every project.
-Set it in the project's own config instead when you also work on non-React projects.
+`none` is the safe choice there: it never stops the tool, and non-React projects simply get plain
+elements.
 
 Your app still needs the library's own setup, such as `MantineProvider` or Chakra's `Provider`.
 
@@ -278,7 +309,7 @@ edit designs. Keep the file in the paid team. See
 |----------------------|---------|
 | `FIGMA_TOKEN` | Required. Figma personal access token |
 | `FIGMA2UI_CODE_MODE` | Set to `1` for the single `figma_build` tool |
-| `FIGMA2UI_UI_LIBRARY` | `mui`, `antd`, `chakra`, or `mantine`. See [UI component library](#ui-component-library-optional) |
+| `FIGMA2UI_UI_LIBRARY` | `mui`, `antd`, `chakra`, `mantine`, or `none` (use the library the project has). See [UI component library](#ui-component-library-optional) |
 | `FIGMA2UI_CACHE` | Cache folder. Default `~/.cache/figma2ui` |
 
 ## Limitations
@@ -302,7 +333,7 @@ edit designs. Keep the file in the paid team. See
 | `Could not detect the tech stack` | Tell the AI your stack, so it can pass `stack` |
 | `skipped` in a result | Those files were edited after generation. Delete one to regenerate it |
 | `FIGMA2UI_UI_LIBRARY=... is set but ... not installed` | Run the install command in the message, then run the tool again |
-| `FIGMA2UI_UI_LIBRARY=... only works with React projects` | Remove the setting from this project's MCP config |
+| `FIGMA2UI_UI_LIBRARY=... only works with React projects` | Set it to `none`, or remove it from this project's MCP config |
 | Layout is shifted compared with Figma | See [How it matches Figma](#how-it-matches-figma): render `Page` as it is, and load the listed fonts |
 | Images do not show | Check that the assets folder in [Generated files](#generated-files) is the one your framework serves |
 | An icon looks outdated | Delete it from the assets folder and run `figma_assets` again |
