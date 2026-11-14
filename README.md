@@ -371,6 +371,7 @@ To run a local checkout in your AI tool, use `"command": "node"` with
 | `src/project.js` | Guarded file writes |
 | `src/usage.js` | Usage tracking and report |
 | `src/library.js` | UI component library config and install check |
+| `docs/SYSTEM_DESIGN.md` | Full system design: every module, flow, limit and safeguard |
 | `docs/system-design.html` | Animated overview for stakeholders |
 | `docs/low-level-design.html` | Detailed design for engineers |
 
